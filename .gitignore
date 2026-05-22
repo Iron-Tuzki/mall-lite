@@ -1,0 +1,8 @@
+# Project exclude paths
+/mall-backend/mall-app/target/
+/mall-backend/mall-common/target/
+/mall-backend/mall-inventory/target/
+/mall-backend/mall-order/target/
+/mall-backend/mall-payment/target/
+/mall-backend/mall-product/target/
+/mall-backend/mall-user/target/
