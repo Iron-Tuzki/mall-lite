@@ -1,0 +1,220 @@
+# 库存、订单、支付表设计
+
+## 一、设计目标
+
+本阶段设计交易主链路的四张基础表：
+
+1. `ims_inventory`：库存表。
+2. `oms_order`：订单主表。
+3. `oms_order_item`：订单明细表。
+4. `pms_payment`：支付流水表。
+
+第一版目标是支撑轻量电商的核心流程：
+
+1. 查询 SKU 库存。
+2. 创建订单并锁定库存。
+3. 模拟支付。
+4. 支付成功后扣减库存。
+5. 取消订单后释放库存。
+
+暂不设计优惠券、购物车、售后、发票、物流、消息事件表和分布式事务表。
+
+## 二、命名约定
+
+| 前缀 | 含义 | 表 |
+| --- | --- | --- |
+| `ims` | Inventory Management System | `ims_inventory` |
+| `oms` | Order Management System | `oms_order`、`oms_order_item` |
+| `pms` | Payment Management System | `pms_payment` |
+
+## 三、`ims_inventory` 库存表
+
+### 1. 表作用
+
+`ims_inventory` 用于保存每个 SKU 的库存数量。库存第一版拆成：
+
+1. `available_stock`：可用库存。
+2. `locked_stock`：锁定库存。
+
+下单时先锁定库存，支付成功后扣减锁定库存，订单取消后释放锁定库存。
+
+### 2. 字段设计
+
+| 字段 | 类型 | 是否必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | `bigint unsigned` | 是 | 自增 | 库存 ID |
+| `sku_id` | `bigint unsigned` | 是 | 无 | SKU ID |
+| `available_stock` | `int unsigned` | 是 | `0` | 可用库存 |
+| `locked_stock` | `int unsigned` | 是 | `0` | 锁定库存 |
+| `version` | `int unsigned` | 是 | `0` | 乐观锁版本号 |
+| `create_time` | `datetime` | 是 | 当前时间 | 创建时间 |
+| `update_time` | `datetime` | 是 | 当前时间 | 更新时间 |
+| `deleted` | `tinyint unsigned` | 是 | `0` | 逻辑删除标记 |
+
+### 3. 索引设计
+
+| 索引名 | 字段 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `uk_sku_id` | `sku_id` | 唯一索引 | 一个 SKU 只有一条库存记录 |
+
+### 4. 核心更新思路
+
+锁定库存时建议使用条件更新：
+
+```sql
+UPDATE ims_inventory
+SET available_stock = available_stock - ?,
+    locked_stock = locked_stock + ?,
+    version = version + 1
+WHERE sku_id = ?
+  AND available_stock >= ?
+  AND deleted = 0;
+```
+
+通过影响行数判断是否锁定成功。
+
+## 四、`oms_order` 订单主表
+
+### 1. 表作用
+
+`oms_order` 保存订单主信息，包括用户、订单号、金额、状态、收货地址快照和支付时间。
+
+### 2. 订单状态
+
+第一版订单状态建议：
+
+| 状态值 | 含义 |
+| --- | --- |
+| `10` | 待支付 |
+| `20` | 已支付 |
+| `30` | 已取消 |
+| `40` | 已完成 |
+
+后续如果加入发货、收货、售后，可以再扩展状态。
+
+### 3. 字段设计
+
+| 字段 | 类型 | 是否必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | `bigint unsigned` | 是 | 自增 | 订单 ID |
+| `order_no` | `varchar(64)` | 是 | 无 | 订单号，唯一 |
+| `user_id` | `bigint unsigned` | 是 | 无 | 用户 ID |
+| `total_amount` | `decimal(10,2)` | 是 | 无 | 订单总金额 |
+| `pay_amount` | `decimal(10,2)` | 是 | 无 | 实付金额 |
+| `freight_amount` | `decimal(10,2)` | 是 | `0.00` | 运费 |
+| `status` | `tinyint unsigned` | 是 | `10` | 订单状态 |
+| `receiver_name` | `varchar(64)` | 是 | 无 | 收货人姓名快照 |
+| `receiver_phone` | `varchar(20)` | 是 | 无 | 收货人手机号快照 |
+| `receiver_province` | `varchar(64)` | 是 | 无 | 省快照 |
+| `receiver_city` | `varchar(64)` | 是 | 无 | 市快照 |
+| `receiver_district` | `varchar(64)` | 是 | 无 | 区/县快照 |
+| `receiver_detail_address` | `varchar(255)` | 是 | 无 | 详细地址快照 |
+| `remark` | `varchar(255)` | 否 | `NULL` | 用户备注 |
+| `pay_time` | `datetime` | 否 | `NULL` | 支付时间 |
+| `cancel_time` | `datetime` | 否 | `NULL` | 取消时间 |
+| `finish_time` | `datetime` | 否 | `NULL` | 完成时间 |
+| `create_time` | `datetime` | 是 | 当前时间 | 创建时间 |
+| `update_time` | `datetime` | 是 | 当前时间 | 更新时间 |
+| `deleted` | `tinyint unsigned` | 是 | `0` | 逻辑删除标记 |
+
+### 4. 索引设计
+
+| 索引名 | 字段 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `uk_order_no` | `order_no` | 唯一索引 | 保证订单号唯一 |
+| `idx_user_status` | `user_id, status` | 普通索引 | 查询用户订单列表 |
+| `idx_create_time` | `create_time` | 普通索引 | 后台按时间查询订单 |
+
+## 五、`oms_order_item` 订单明细表
+
+### 1. 表作用
+
+`oms_order_item` 保存订单中的 SKU 明细。为了保证历史订单稳定展示，明细表要保存商品名称、SKU 名称、SKU 编码、规格、主图和下单价格快照。
+
+### 2. 字段设计
+
+| 字段 | 类型 | 是否必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | `bigint unsigned` | 是 | 自增 | 明细 ID |
+| `order_id` | `bigint unsigned` | 是 | 无 | 订单 ID |
+| `order_no` | `varchar(64)` | 是 | 无 | 订单号 |
+| `product_id` | `bigint unsigned` | 是 | 无 | 商品 SPU ID |
+| `sku_id` | `bigint unsigned` | 是 | 无 | SKU ID |
+| `sku_code` | `varchar(64)` | 是 | 无 | SKU 编码快照 |
+| `product_name` | `varchar(128)` | 是 | 无 | 商品名称快照 |
+| `sku_name` | `varchar(128)` | 是 | 无 | SKU 名称快照 |
+| `spec_data` | `json` | 否 | `NULL` | 规格快照 |
+| `main_image_url` | `varchar(255)` | 否 | `NULL` | 商品图片快照 |
+| `unit_price` | `decimal(10,2)` | 是 | 无 | 下单单价 |
+| `quantity` | `int unsigned` | 是 | 无 | 购买数量 |
+| `total_amount` | `decimal(10,2)` | 是 | 无 | 明细总金额 |
+| `create_time` | `datetime` | 是 | 当前时间 | 创建时间 |
+| `update_time` | `datetime` | 是 | 当前时间 | 更新时间 |
+| `deleted` | `tinyint unsigned` | 是 | `0` | 逻辑删除标记 |
+
+### 3. 索引设计
+
+| 索引名 | 字段 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `idx_order_id` | `order_id` | 普通索引 | 查询订单明细 |
+| `idx_order_no` | `order_no` | 普通索引 | 按订单号查询明细 |
+| `idx_sku_id` | `sku_id` | 普通索引 | 后台统计 SKU 销售 |
+
+## 六、`pms_payment` 支付流水表
+
+### 1. 表作用
+
+`pms_payment` 保存支付流水。第一版做模拟支付，不接真实支付渠道，但仍然保留支付流水号、订单号、支付金额、支付状态和回调内容，方便后续扩展。
+
+### 2. 支付状态
+
+| 状态值 | 含义 |
+| --- | --- |
+| `10` | 待支付 |
+| `20` | 支付成功 |
+| `30` | 支付失败 |
+| `40` | 已关闭 |
+
+### 3. 字段设计
+
+| 字段 | 类型 | 是否必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | `bigint unsigned` | 是 | 自增 | 支付流水 ID |
+| `payment_no` | `varchar(64)` | 是 | 无 | 支付流水号，唯一 |
+| `order_id` | `bigint unsigned` | 是 | 无 | 订单 ID |
+| `order_no` | `varchar(64)` | 是 | 无 | 订单号 |
+| `user_id` | `bigint unsigned` | 是 | 无 | 用户 ID |
+| `pay_channel` | `tinyint unsigned` | 是 | `1` | 支付渠道：1 模拟支付 |
+| `pay_amount` | `decimal(10,2)` | 是 | 无 | 支付金额 |
+| `status` | `tinyint unsigned` | 是 | `10` | 支付状态 |
+| `pay_time` | `datetime` | 否 | `NULL` | 支付成功时间 |
+| `callback_content` | `text` | 否 | `NULL` | 支付回调内容 |
+| `create_time` | `datetime` | 是 | 当前时间 | 创建时间 |
+| `update_time` | `datetime` | 是 | 当前时间 | 更新时间 |
+| `deleted` | `tinyint unsigned` | 是 | `0` | 逻辑删除标记 |
+
+### 4. 索引设计
+
+| 索引名 | 字段 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `uk_payment_no` | `payment_no` | 唯一索引 | 支付流水幂等 |
+| `idx_order_no` | `order_no` | 普通索引 | 查询订单支付记录 |
+| `idx_user_id` | `user_id` | 普通索引 | 查询用户支付记录 |
+
+## 七、核心链路关系
+
+```text
+pms_sku.id       1 ---- 1 ims_inventory.sku_id
+oms_order.id     1 ---- n oms_order_item.order_id
+oms_order.order_no 1 -- n pms_payment.order_no
+```
+
+第一版不强制添加外键，保持和前面表设计一致。
+
+## 八、生产注意点
+
+1. 订单金额和支付金额都必须使用 `decimal`，不能使用浮点类型。
+2. 订单明细必须保存商品快照，避免商品改名、改价影响历史订单。
+3. 支付回调要做幂等，第一版通过 `payment_no` 唯一索引打基础。
+4. 库存扣减要用条件更新或乐观锁，不能先查库存再无条件更新。
+5. 订单状态流转需要在业务层做状态机控制，例如只有待支付订单才能取消或支付。
