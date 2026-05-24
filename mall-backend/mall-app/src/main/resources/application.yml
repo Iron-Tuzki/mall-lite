@@ -27,3 +27,11 @@ mybatis-plus:
     map-underscore-to-camel-case: true
   global-config:
     banner: false
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+  api-docs:
+    path: /v3/api-docs

@@ -1,5 +1,8 @@
 package com.tuzki.mall.common.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+
 import java.time.LocalDateTime;
 
 /**
@@ -7,6 +10,7 @@ import java.time.LocalDateTime;
  */
 public class BaseEntity {
 
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     private LocalDateTime createTime;
