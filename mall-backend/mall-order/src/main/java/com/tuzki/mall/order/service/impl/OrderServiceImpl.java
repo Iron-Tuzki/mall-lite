@@ -10,6 +10,8 @@ import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
+import com.tuzki.mall.order.vo.OrderDetailVO;
+import com.tuzki.mall.order.vo.OrderItemVO;
 import com.tuzki.mall.product.entity.Product;
 import com.tuzki.mall.product.entity.Sku;
 import com.tuzki.mall.product.mapper.ProductMapper;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -37,6 +40,8 @@ public class OrderServiceImpl implements OrderService {
     private static final int NOT_DELETED = 0;
 
     private static final int PENDING_PAYMENT_STATUS = 10;
+
+    private static final int CANCELLED_STATUS = 30;
 
     private static final BigDecimal ZERO_FREIGHT_AMOUNT = BigDecimal.ZERO;
 
@@ -94,6 +99,40 @@ public class OrderServiceImpl implements OrderService {
         return toCreateVO(order);
     }
 
+    @Override
+    public OrderDetailVO getOrderById(Long orderId) {
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getId, orderId)
+                .eq(Order::getDeleted, NOT_DELETED));
+        if (order == null) {
+            throw new BusinessException(404, "order not found");
+        }
+
+        List<OrderItem> orderItems = orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
+                .eq(OrderItem::getOrderId, order.getId())
+                .eq(OrderItem::getDeleted, NOT_DELETED));
+        return toDetailVO(order, orderItems);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelOrder(Long orderId) {
+        Order order = getActiveOrder(orderId);
+        if (!Integer.valueOf(PENDING_PAYMENT_STATUS).equals(order.getStatus())) {
+            throw new BusinessException(400, "only pending payment order can be cancelled");
+        }
+
+        List<OrderItem> orderItems = getActiveOrderItems(order.getId());
+        // 取消订单和释放库存必须在同一个事务中完成，避免订单已取消但库存仍被锁定。
+        for (OrderItem orderItem : orderItems) {
+            inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
+        }
+
+        order.setStatus(CANCELLED_STATUS);
+        order.setCancelTime(LocalDateTime.now());
+        orderMapper.updateById(order);
+    }
+
     private User getActiveUser(Long userId) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
                 .eq(User::getId, userId)
@@ -136,6 +175,22 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(404, "product not found");
         }
         return product;
+    }
+
+    private Order getActiveOrder(Long orderId) {
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getId, orderId)
+                .eq(Order::getDeleted, NOT_DELETED));
+        if (order == null) {
+            throw new BusinessException(404, "order not found");
+        }
+        return order;
+    }
+
+    private List<OrderItem> getActiveOrderItems(Long orderId) {
+        return orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
+                .eq(OrderItem::getOrderId, orderId)
+                .eq(OrderItem::getDeleted, NOT_DELETED));
     }
 
     private Order buildOrder(OrderCreateRequest request, Address address, BigDecimal totalAmount, String orderNo) {
@@ -191,6 +246,44 @@ public class OrderServiceImpl implements OrderService {
         orderCreateVO.setPayAmount(order.getPayAmount());
         orderCreateVO.setStatus(order.getStatus());
         return orderCreateVO;
+    }
+
+    private OrderDetailVO toDetailVO(Order order, List<OrderItem> orderItems) {
+        OrderDetailVO orderDetailVO = new OrderDetailVO();
+        orderDetailVO.setOrderId(order.getId());
+        orderDetailVO.setOrderNo(order.getOrderNo());
+        orderDetailVO.setUserId(order.getUserId());
+        orderDetailVO.setTotalAmount(order.getTotalAmount());
+        orderDetailVO.setPayAmount(order.getPayAmount());
+        orderDetailVO.setFreightAmount(order.getFreightAmount());
+        orderDetailVO.setStatus(order.getStatus());
+        orderDetailVO.setReceiverName(order.getReceiverName());
+        orderDetailVO.setReceiverPhone(order.getReceiverPhone());
+        orderDetailVO.setReceiverProvince(order.getReceiverProvince());
+        orderDetailVO.setReceiverCity(order.getReceiverCity());
+        orderDetailVO.setReceiverDistrict(order.getReceiverDistrict());
+        orderDetailVO.setReceiverDetailAddress(order.getReceiverDetailAddress());
+        orderDetailVO.setRemark(order.getRemark());
+        orderDetailVO.setCreateTime(order.getCreateTime());
+        orderDetailVO.setItems(orderItems.stream()
+                .map(this::toItemVO)
+                .toList());
+        return orderDetailVO;
+    }
+
+    private OrderItemVO toItemVO(OrderItem orderItem) {
+        OrderItemVO orderItemVO = new OrderItemVO();
+        orderItemVO.setId(orderItem.getId());
+        orderItemVO.setSkuId(orderItem.getSkuId());
+        orderItemVO.setSkuCode(orderItem.getSkuCode());
+        orderItemVO.setProductName(orderItem.getProductName());
+        orderItemVO.setSkuName(orderItem.getSkuName());
+        orderItemVO.setSpecData(orderItem.getSpecData());
+        orderItemVO.setMainImageUrl(orderItem.getMainImageUrl());
+        orderItemVO.setUnitPrice(orderItem.getUnitPrice());
+        orderItemVO.setQuantity(orderItem.getQuantity());
+        orderItemVO.setTotalAmount(orderItem.getTotalAmount());
+        return orderItemVO;
     }
 
     private String generateOrderNo() {

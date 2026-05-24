@@ -161,6 +161,47 @@ class OrderCreateApiIntegrationTest {
     }
 
     @Test
+    void cancelPendingOrderReleasesLockedStock() throws Exception {
+        Long userId = insertUser();
+        Long addressId = insertAddress(userId);
+        Sku sku = insertProductAndSku();
+        insertInventory(sku.getId(), 10, 0);
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "userId": %d,
+                                  "addressId": %d,
+                                  "skuId": %d,
+                                  "quantity": 2,
+                                  "remark": "cancel order test"
+                                }
+                                """.formatted(userId, addressId, sku.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getUserId, userId)
+                .eq(Order::getRemark, "cancel order test"));
+        assertNotNull(order);
+
+        mockMvc.perform(post("/api/orders/{orderId}/cancel", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        Order cancelledOrder = orderMapper.selectById(order.getId());
+        assertEquals(30, cancelledOrder.getStatus());
+        assertNotNull(cancelledOrder.getCancelTime());
+
+        Inventory inventory = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                .eq(Inventory::getSkuId, sku.getId()));
+        assertEquals(10, inventory.getAvailableStock());
+        assertEquals(0, inventory.getLockedStock());
+        assertEquals(2, inventory.getVersion());
+    }
+
+    @Test
     void getOrderRejectsMissingOrder() throws Exception {
         mockMvc.perform(get("/api/orders/{orderId}", 999999999L))
                 .andExpect(status().isOk())

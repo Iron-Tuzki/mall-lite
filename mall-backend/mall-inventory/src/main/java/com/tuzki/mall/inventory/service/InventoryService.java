@@ -48,4 +48,12 @@ public interface InventoryService {
      * @param quantity 锁定数量，必须大于 0
      */
     void lockStock(Long skuId, Integer quantity);
+
+    /**
+     * 取消订单时释放指定 SKU 的锁定库存。
+     *
+     * @param skuId SKU ID，用于定位要释放的库存记录
+     * @param quantity 释放数量，必须大于 0
+     */
+    void releaseStock(Long skuId, Integer quantity);
 }
