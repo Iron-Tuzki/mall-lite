@@ -7,6 +7,9 @@ import org.springframework.context.annotation.Configuration;
  * MyBatis-Plus configuration for scanning mapper interfaces.
  */
 @Configuration
-@MapperScan("com.tuzki.mall.user.mapper")
+@MapperScan({
+        "com.tuzki.mall.user.mapper",
+        "com.tuzki.mall.product.mapper"
+})
 public class MyBatisPlusConfig {
 }

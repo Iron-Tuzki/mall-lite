@@ -100,3 +100,5 @@ mall-lite/
 5. 实现用户、商品、库存、订单、支付核心链路。
 6. 引入 Redis 处理缓存、库存预热和订单超时。
 7. 逐步补充接口文档、单元测试和 Docker Compose 部署配置。
+
+http://localhost:8080/swagger-ui.html
