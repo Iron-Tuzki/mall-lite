@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Default implementation of SKU inventory maintenance logic.
+ * SKU 库存业务默认实现，负责后台库存维护以及交易链路中的库存锁定。
  */
 @Service
 public class InventoryServiceImpl implements InventoryService {
@@ -75,6 +75,26 @@ public class InventoryServiceImpl implements InventoryService {
         Inventory inventory = getActiveInventory(skuId);
         inventory.setDeleted(DELETED);
         inventoryMapper.updateById(inventory);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void lockStock(Long skuId, Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new BusinessException(400, "quantity must be greater than 0");
+        }
+
+        // 使用条件更新把“校验库存”和“锁定库存”合并为一次原子操作，避免并发下先查后改导致超卖。
+        int affectedRows = inventoryMapper.lockStock(skuId, quantity);
+        if (affectedRows == 1) {
+            return;
+        }
+
+        Inventory inventory = getActiveInventory(skuId);
+        if (inventory.getAvailableStock() < quantity) {
+            throw new BusinessException(400, "insufficient stock");
+        }
+        throw new BusinessException(400, "lock stock failed");
     }
 
     private void ensureSkuExists(Long skuId) {

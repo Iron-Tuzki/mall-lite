@@ -2,6 +2,7 @@ package com.tuzki.mall.inventory;
 
 import com.tuzki.mall.inventory.entity.Inventory;
 import com.tuzki.mall.inventory.mapper.InventoryMapper;
+import com.tuzki.mall.inventory.service.InventoryService;
 import com.tuzki.mall.product.entity.Category;
 import com.tuzki.mall.product.entity.Product;
 import com.tuzki.mall.product.entity.Sku;
@@ -44,6 +45,9 @@ class InventoryApiIntegrationTest {
 
     @Autowired
     private InventoryMapper inventoryMapper;
+
+    @Autowired
+    private InventoryService inventoryService;
 
     @Test
     void inventoryCrudMaintainsSkuStockBySkuId() throws Exception {
@@ -146,6 +150,32 @@ class InventoryApiIntegrationTest {
                 .andExpect(jsonPath("$.message").value("inventory already exists"));
     }
 
+    @Test
+    void lockStockMovesAvailableStockToLockedStock() {
+        Long skuId = insertSku();
+        insertInventory(skuId, 10, 0);
+
+        inventoryService.lockStock(skuId, 3);
+
+        Inventory inventory = inventoryMapper.selectById(getInventoryIdBySkuId(skuId));
+        assertEquals(7, inventory.getAvailableStock());
+        assertEquals(3, inventory.getLockedStock());
+        assertEquals(1, inventory.getVersion());
+    }
+
+    @Test
+    void lockStockRejectsInvalidQuantityMissingInventoryAndInsufficientStock() {
+        Long skuId = insertSku();
+        insertInventory(skuId, 2, 0);
+
+        assertBusinessException(400, "quantity must be greater than 0",
+                () -> inventoryService.lockStock(skuId, 0));
+        assertBusinessException(404, "inventory not found",
+                () -> inventoryService.lockStock(999999999L, 1));
+        assertBusinessException(400, "insufficient stock",
+                () -> inventoryService.lockStock(skuId, 3));
+    }
+
     private Long insertSku() {
         long suffix = System.nanoTime();
 
@@ -176,5 +206,37 @@ class InventoryApiIntegrationTest {
         sku.setDeleted(0);
         skuMapper.insert(sku);
         return sku.getId();
+    }
+
+    private void insertInventory(Long skuId, Integer availableStock, Integer lockedStock) {
+        Inventory inventory = new Inventory();
+        inventory.setSkuId(skuId);
+        inventory.setAvailableStock(availableStock);
+        inventory.setLockedStock(lockedStock);
+        inventory.setVersion(0);
+        inventory.setDeleted(0);
+        inventoryMapper.insert(inventory);
+    }
+
+    private Long getInventoryIdBySkuId(Long skuId) {
+        return inventoryMapper.selectList(null).stream()
+                .filter(inventory -> skuId.equals(inventory.getSkuId()))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+    }
+
+    private void assertBusinessException(Integer code, String message, ThrowingAction action) {
+        com.tuzki.mall.common.exception.BusinessException exception =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        com.tuzki.mall.common.exception.BusinessException.class, action::execute);
+        assertEquals(code, exception.getCode());
+        assertEquals(message, exception.getMessage());
+    }
+
+    @FunctionalInterface
+    private interface ThrowingAction {
+
+        void execute();
     }
 }
