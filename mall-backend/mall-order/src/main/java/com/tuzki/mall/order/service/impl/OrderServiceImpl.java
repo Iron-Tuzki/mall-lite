@@ -6,6 +6,7 @@ import com.tuzki.mall.inventory.service.InventoryService;
 import com.tuzki.mall.order.dto.OrderCreateRequest;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
+import com.tuzki.mall.order.enums.OrderStatus;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.service.OrderService;
@@ -38,10 +39,6 @@ public class OrderServiceImpl implements OrderService {
     private static final int ACTIVE_STATUS = 1;
 
     private static final int NOT_DELETED = 0;
-
-    private static final int PENDING_PAYMENT_STATUS = 10;
-
-    private static final int CANCELLED_STATUS = 30;
 
     private static final BigDecimal ZERO_FREIGHT_AMOUNT = BigDecimal.ZERO;
 
@@ -118,9 +115,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(rollbackFor = Exception.class)
     public void cancelOrder(Long orderId) {
         Order order = getActiveOrder(orderId);
-        if (!Integer.valueOf(PENDING_PAYMENT_STATUS).equals(order.getStatus())) {
-            throw new BusinessException(400, "only pending payment order can be cancelled");
-        }
+        OrderStatus.fromCode(order.getStatus()).checkCanCancel();
 
         List<OrderItem> orderItems = getActiveOrderItems(order.getId());
         // 取消订单和释放库存必须在同一个事务中完成，避免订单已取消但库存仍被锁定。
@@ -128,7 +123,7 @@ public class OrderServiceImpl implements OrderService {
             inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
         }
 
-        order.setStatus(CANCELLED_STATUS);
+        order.setStatus(OrderStatus.CANCELLED.getCode());
         order.setCancelTime(LocalDateTime.now());
         orderMapper.updateById(order);
     }
@@ -200,7 +195,7 @@ public class OrderServiceImpl implements OrderService {
         order.setTotalAmount(totalAmount);
         order.setPayAmount(totalAmount);
         order.setFreightAmount(ZERO_FREIGHT_AMOUNT);
-        order.setStatus(PENDING_PAYMENT_STATUS);
+        order.setStatus(OrderStatus.PENDING_PAYMENT.getCode());
         order.setReceiverName(address.getReceiverName());
         order.setReceiverPhone(address.getReceiverPhone());
         order.setReceiverProvince(address.getProvince());
