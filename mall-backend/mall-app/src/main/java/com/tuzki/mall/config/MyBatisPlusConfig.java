@@ -10,7 +10,8 @@ import org.springframework.context.annotation.Configuration;
 @MapperScan({
         "com.tuzki.mall.user.mapper",
         "com.tuzki.mall.product.mapper",
-        "com.tuzki.mall.inventory.mapper"
+        "com.tuzki.mall.inventory.mapper",
+        "com.tuzki.mall.order.mapper"
 })
 public class MyBatisPlusConfig {
 }
