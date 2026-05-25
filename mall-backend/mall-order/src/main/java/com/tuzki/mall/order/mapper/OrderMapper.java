@@ -29,4 +29,22 @@ public interface OrderMapper extends BaseMapper<Order> {
               AND deleted = 0
             """)
     int markPaidIfPending(@Param("orderId") Long orderId, @Param("payTime") LocalDateTime payTime);
+
+
+    /**
+     * 将待支付订单原子更新为取消。
+     *
+     * @param orderId 订单 ID，用于定位待支付订单
+     * @return 影响行数，返回 1 表示更新成功
+     */
+    @Update("""
+            UPDATE oms_order
+            SET status = 30,
+                cancel_time = NOW(),
+                update_time = NOW()
+            WHERE id = #{orderId}
+              AND status = 10
+              AND deleted = 0
+            """)
+    int markCancelIfPending(@Param("orderId") Long orderId);
 }

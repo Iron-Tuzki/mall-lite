@@ -129,15 +129,22 @@ public class OrderServiceImpl implements OrderService {
     public void cancelOrder(Long orderId) {
         Order order = getActiveOrder(orderId);
         OrderStatus.fromCode(order.getStatus()).checkCanCancel();
+        // 使用update更新order status来实现并发幂等
+        int affectedRows = orderMapper.markCancelIfPending(orderId);
+        if (affectedRows == 0) {
+            // 已被其他线程更新，直接返回
+            Order latestOrder = getActiveOrder(orderId);
+            if (OrderStatus.fromCode(latestOrder.getStatus()) == OrderStatus.CANCELLED) {
+                return;
+            }
+            OrderStatus.fromCode(latestOrder.getStatus()).checkCanCancel();
+            return;
+        }
 
         List<OrderItem> orderItems = getActiveOrderItems(order.getId());
         for (OrderItem orderItem : orderItems) {
             inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
         }
-
-        order.setStatus(OrderStatus.CANCELLED.getCode());
-        order.setCancelTime(LocalDateTime.now());
-        orderMapper.updateById(order);
     }
 
     private User getActiveUser(Long userId) {

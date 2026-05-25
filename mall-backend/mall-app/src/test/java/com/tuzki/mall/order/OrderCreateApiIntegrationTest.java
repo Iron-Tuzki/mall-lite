@@ -255,9 +255,7 @@ class OrderCreateApiIntegrationTest {
 
         mockMvc.perform(post("/api/orders/{orderId}/cancel", order.getId()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value(400))
-                .andExpect(jsonPath("$.message").value("cancelled order cannot be cancelled"));
+                .andExpect(jsonPath("$.success").value(true));
     }
 
     @Test
