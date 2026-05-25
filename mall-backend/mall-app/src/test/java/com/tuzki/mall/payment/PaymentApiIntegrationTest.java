@@ -1,22 +1,13 @@
 package com.tuzki.mall.payment;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.tuzki.mall.TestSeedData;
 import com.tuzki.mall.inventory.entity.Inventory;
 import com.tuzki.mall.inventory.mapper.InventoryMapper;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.payment.entity.Payment;
 import com.tuzki.mall.payment.mapper.PaymentMapper;
-import com.tuzki.mall.product.entity.Category;
-import com.tuzki.mall.product.entity.Product;
-import com.tuzki.mall.product.entity.Sku;
-import com.tuzki.mall.product.mapper.CategoryMapper;
-import com.tuzki.mall.product.mapper.ProductMapper;
-import com.tuzki.mall.product.mapper.SkuMapper;
-import com.tuzki.mall.user.entity.Address;
-import com.tuzki.mall.user.entity.User;
-import com.tuzki.mall.user.mapper.AddressMapper;
-import com.tuzki.mall.user.mapper.UserMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -32,6 +23,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/**
+ * 支付接口集成测试，基于固定测试种子数据验证发起支付、回调幂等和库存确认扣减。
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
@@ -39,21 +33,6 @@ class PaymentApiIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
-
-    @Autowired
-    private UserMapper userMapper;
-
-    @Autowired
-    private AddressMapper addressMapper;
-
-    @Autowired
-    private CategoryMapper categoryMapper;
-
-    @Autowired
-    private ProductMapper productMapper;
-
-    @Autowired
-    private SkuMapper skuMapper;
 
     @Autowired
     private InventoryMapper inventoryMapper;
@@ -66,11 +45,7 @@ class PaymentApiIntegrationTest {
 
     @Test
     void successfulCallbackUpdatesPaymentOrderAndDeductsLockedStock() throws Exception {
-        Long userId = insertUser();
-        Long addressId = insertAddress(userId);
-        Sku sku = insertProductAndSku();
-        insertInventory(sku.getId(), 10, 0);
-        Order order = createOrder(userId, addressId, sku.getId(), 2, "payment order test");
+        Order order = createOrder(2, "payment order test");
 
         mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
                 .andExpect(status().isOk())
@@ -81,21 +56,13 @@ class PaymentApiIntegrationTest {
                 .andExpect(jsonPath("$.data.paymentStatus").value(10))
                 .andExpect(jsonPath("$.data.payAmount").value(398.00));
 
-        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
-                .eq(Payment::getOrderId, order.getId()));
-        assertNotNull(payment);
+        Payment payment = getPayment(order.getId());
         assertEquals(order.getOrderNo(), payment.getOrderNo());
-        assertEquals(userId, payment.getUserId());
+        assertEquals(TestSeedData.USER_ID, payment.getUserId());
         assertEquals(new BigDecimal("398.00"), payment.getPayAmount());
         assertEquals(10, payment.getStatus());
 
-        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "mockResult": "SUCCESS"
-                                }
-                                """))
+        mockMvc.perform(successCallback(payment.getPaymentNo()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.paymentNo").value(payment.getPaymentNo()))
@@ -112,59 +79,35 @@ class PaymentApiIntegrationTest {
         assertEquals(20, successfulPayment.getStatus());
         assertNotNull(successfulPayment.getPayTime());
 
-        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "mockResult": "SUCCESS"
-                                }
-                                """))
+        mockMvc.perform(successCallback(payment.getPaymentNo()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.orderStatus").value(20))
                 .andExpect(jsonPath("$.data.paymentStatus").value(20));
 
-        Inventory inventory = getInventory(sku.getId());
-        assertEquals(8, inventory.getAvailableStock());
+        Inventory inventory = getSeedInventory();
+        assertEquals(998, inventory.getAvailableStock());
         assertEquals(0, inventory.getLockedStock());
         assertEquals(2, inventory.getVersion());
     }
 
     @Test
     void failedCallbackOnlyMarksPaymentFailedAndKeepsOrderPending() throws Exception {
-        Long userId = insertUser();
-        Long addressId = insertAddress(userId);
-        Sku sku = insertProductAndSku();
-        insertInventory(sku.getId(), 10, 0);
-        Order order = createOrder(userId, addressId, sku.getId(), 2, "failed payment order test");
+        Order order = createOrder(2, "failed payment order test");
 
         mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
-                .eq(Payment::getOrderId, order.getId()));
-        assertNotNull(payment);
+        Payment payment = getPayment(order.getId());
 
-        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "mockResult": "FAILED"
-                                }
-                                """))
+        mockMvc.perform(failedCallback(payment.getPaymentNo()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.orderStatus").value(10))
                 .andExpect(jsonPath("$.data.paymentStatus").value(30));
 
-        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "mockResult": "FAILED"
-                                }
-                                """))
+        mockMvc.perform(failedCallback(payment.getPaymentNo()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.orderStatus").value(10))
@@ -176,35 +119,23 @@ class PaymentApiIntegrationTest {
         Payment failedPayment = paymentMapper.selectById(payment.getId());
         assertEquals(30, failedPayment.getStatus());
 
-        Inventory inventory = getInventory(sku.getId());
-        assertEquals(8, inventory.getAvailableStock());
+        Inventory inventory = getSeedInventory();
+        assertEquals(998, inventory.getAvailableStock());
         assertEquals(2, inventory.getLockedStock());
         assertEquals(1, inventory.getVersion());
     }
 
     @Test
     void payOrderRejectsAlreadyPaidOrder() throws Exception {
-        Long userId = insertUser();
-        Long addressId = insertAddress(userId);
-        Sku sku = insertProductAndSku();
-        insertInventory(sku.getId(), 10, 0);
-        Order order = createOrder(userId, addressId, sku.getId(), 1, "double payment order test");
+        Order order = createOrder(1, "double payment order test");
 
         mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
-                .eq(Payment::getOrderId, order.getId()));
-        assertNotNull(payment);
+        Payment payment = getPayment(order.getId());
 
-        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "mockResult": "SUCCESS"
-                                }
-                                """))
+        mockMvc.perform(successCallback(payment.getPaymentNo()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
@@ -217,11 +148,7 @@ class PaymentApiIntegrationTest {
 
     @Test
     void payOrderReturnsExistingPendingPaymentBeforeCallback() throws Exception {
-        Long userId = insertUser();
-        Long addressId = insertAddress(userId);
-        Sku sku = insertProductAndSku();
-        insertInventory(sku.getId(), 10, 0);
-        Order order = createOrder(userId, addressId, sku.getId(), 1, "pending payment idempotent test");
+        Order order = createOrder(1, "pending payment idempotent test");
 
         mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
                 .andExpect(status().isOk())
@@ -240,145 +167,86 @@ class PaymentApiIntegrationTest {
 
     @Test
     void terminalPaymentIgnoresConflictingCallbackResult() throws Exception {
-        Long userId = insertUser();
-        Long addressId = insertAddress(userId);
-        Sku sku = insertProductAndSku();
-        insertInventory(sku.getId(), 10, 0);
-        Order order = createOrder(userId, addressId, sku.getId(), 1, "terminal payment callback test");
+        Order order = createOrder(1, "terminal payment callback test");
 
         mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
-                .eq(Payment::getOrderId, order.getId()));
-        assertNotNull(payment);
+        Payment payment = getPayment(order.getId());
 
-        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "mockResult": "SUCCESS"
-                                }
-                                """))
+        mockMvc.perform(successCallback(payment.getPaymentNo()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "mockResult": "FAILED"
-                                }
-                                """))
+        mockMvc.perform(failedCallback(payment.getPaymentNo()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.orderStatus").value(20))
                 .andExpect(jsonPath("$.data.paymentStatus").value(20));
 
-        Inventory inventory = getInventory(sku.getId());
-        assertEquals(9, inventory.getAvailableStock());
+        Inventory inventory = getSeedInventory();
+        assertEquals(999, inventory.getAvailableStock());
         assertEquals(0, inventory.getLockedStock());
         assertEquals(2, inventory.getVersion());
     }
 
-    private Order createOrder(Long userId, Long addressId, Long skuId, Integer quantity, String remark) throws Exception {
+    private Order createOrder(Integer quantity, String remark) throws Exception {
+        String requestId = "REQ-payment-" + System.nanoTime();
         mockMvc.perform(post("/api/orders")
                         .contentType("application/json")
                         .content("""
                                 {
-                                  "requestId": "REQ-payment-%d",
+                                  "requestId": "%s",
                                   "userId": %d,
                                   "addressId": %d,
                                   "skuId": %d,
                                   "quantity": %d,
                                   "remark": "%s"
                                 }
-                                """.formatted(System.nanoTime(), userId, addressId, skuId, quantity, remark)))
+                                """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID,
+                                TestSeedData.SKU_ID, quantity, remark)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
         Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
-                .eq(Order::getUserId, userId)
-                .eq(Order::getRemark, remark));
+                .eq(Order::getUserId, TestSeedData.USER_ID)
+                .eq(Order::getRequestId, requestId));
         assertNotNull(order);
         return order;
     }
 
-    private Inventory getInventory(Long skuId) {
-        return inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                .eq(Inventory::getSkuId, skuId));
+    private Payment getPayment(Long orderId) {
+        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, orderId));
+        assertNotNull(payment);
+        return payment;
     }
 
-    private Long insertUser() {
-        long suffix = System.nanoTime();
-        User user = new User();
-        user.setUsername("payment_user_" + suffix);
-        user.setPassword("encoded-password");
-        user.setNickname("Payment Test User");
-        user.setStatus(1);
-        user.setDeleted(0);
-        userMapper.insert(user);
-        return user.getId();
+    private Inventory getSeedInventory() {
+        Inventory inventory = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                .eq(Inventory::getSkuId, TestSeedData.SKU_ID));
+        assertNotNull(inventory);
+        return inventory;
     }
 
-    private Long insertAddress(Long userId) {
-        Address address = new Address();
-        address.setUserId(userId);
-        address.setReceiverName("Payment Receiver");
-        address.setReceiverPhone("13800000000");
-        address.setProvince("Guangdong");
-        address.setCity("Shenzhen");
-        address.setDistrict("Nanshan");
-        address.setDetailAddress("Payment Test Address");
-        address.setDefaultFlag(1);
-        address.setDeleted(0);
-        addressMapper.insert(address);
-        return address.getId();
+    private org.springframework.test.web.servlet.RequestBuilder successCallback(String paymentNo) {
+        return post("/api/payments/{paymentNo}/callback", paymentNo)
+                .contentType("application/json")
+                .content("""
+                        {
+                          "mockResult": "SUCCESS"
+                        }
+                        """);
     }
 
-    private Sku insertProductAndSku() {
-        long suffix = System.nanoTime();
-
-        Category category = new Category();
-        category.setParentId(0L);
-        category.setName("Payment Category " + suffix);
-        category.setLevel(1);
-        category.setSort(1);
-        category.setStatus(1);
-        category.setDeleted(0);
-        categoryMapper.insert(category);
-
-        Product product = new Product();
-        product.setCategoryId(category.getId());
-        product.setProductCode("PAY-P" + suffix);
-        product.setName("Payment Test Product");
-        product.setMainImageUrl("https://example.com/payment-product.png");
-        product.setStatus(1);
-        product.setSort(1);
-        product.setDeleted(0);
-        productMapper.insert(product);
-
-        Sku sku = new Sku();
-        sku.setProductId(product.getId());
-        sku.setSkuCode("PAY-S" + suffix);
-        sku.setSkuName("Payment Test SKU");
-        sku.setSpecData("{\"color\":\"black\"}");
-        sku.setPrice(new BigDecimal("199.00"));
-        sku.setMainImageUrl("https://example.com/payment-sku.png");
-        sku.setStatus(1);
-        sku.setDeleted(0);
-        skuMapper.insert(sku);
-        return sku;
-    }
-
-    private void insertInventory(Long skuId, Integer availableStock, Integer lockedStock) {
-        Inventory inventory = new Inventory();
-        inventory.setSkuId(skuId);
-        inventory.setAvailableStock(availableStock);
-        inventory.setLockedStock(lockedStock);
-        inventory.setVersion(0);
-        inventory.setDeleted(0);
-        inventoryMapper.insert(inventory);
+    private org.springframework.test.web.servlet.RequestBuilder failedCallback(String paymentNo) {
+        return post("/api/payments/{paymentNo}/callback", paymentNo)
+                .contentType("application/json")
+                .content("""
+                        {
+                          "mockResult": "FAILED"
+                        }
+                        """);
     }
 }
