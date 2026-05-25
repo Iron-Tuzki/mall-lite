@@ -116,4 +116,79 @@ class UserApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value(404))
                 .andExpect(jsonPath("$.message").value("user not found"));
     }
+
+    @Test
+    void loginPersistsTokenAndLogoutInvalidatesToken() throws Exception {
+        String username = "login_user_" + System.nanoTime();
+        registerUser(username, "password123", "Login User");
+
+        String token = mockMvc.perform(post("/api/users/login")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "username": "%s",
+                                  "password": "password123"
+                                }
+                                """.formatted(username)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.token").isString())
+                .andExpect(jsonPath("$.data.user.username").value(username))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .replaceAll(".*\"token\":\"([^\"]+)\".*", "$1");
+
+        mockMvc.perform(get("/api/users/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.username").value(username))
+                .andExpect(jsonPath("$.data.password").doesNotExist());
+
+        mockMvc.perform(post("/api/users/logout")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(get("/api/users/me")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("invalid login token"));
+    }
+
+    @Test
+    void loginRejectsWrongPassword() throws Exception {
+        String username = "wrong_password_user_" + System.nanoTime();
+        registerUser(username, "password123", "Wrong Password User");
+
+        mockMvc.perform(post("/api/users/login")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "username": "%s",
+                                  "password": "bad-password"
+                                }
+                                """.formatted(username)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("username or password incorrect"));
+    }
+
+    private void registerUser(String username, String password, String nickname) throws Exception {
+        mockMvc.perform(post("/api/users/register")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "username": "%s",
+                                  "password": "%s",
+                                  "nickname": "%s"
+                                }
+                                """.formatted(username, password, nickname)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
 }
