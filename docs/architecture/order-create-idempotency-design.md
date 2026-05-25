@@ -14,17 +14,26 @@
 当前目标是保证：
 
 ```text
-同一个 userId + requestId 只创建一张订单
+同一个登录用户 + requestId 只创建一张订单
 ```
+
+用户 ID 不再由请求体传入，而是通过 `Authorization: Bearer <token>` 解析登录态得到。
 
 ## 二、接口字段
 
-`POST /api/orders` 请求体包含 `requestId` 和 `items`：
+`POST /api/orders`
+
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+请求体包含 `requestId` 和 `items`：
 
 ```json
 {
   "requestId": "b7d4f6c8-xxxx-xxxx",
-  "userId": 1,
   "addressId": 2,
   "items": [
     {
@@ -43,19 +52,20 @@
 字段含义：
 
 1. `requestId`：下单请求幂等号，由前端在用户提交订单前生成。
-2. `items`：订单明细列表，一条记录表示一个 SKU 及其购买数量。
-3. 同一用户重复提交同一个 `requestId`，后端返回第一次创建的订单。
-4. 不同用户可以使用相同 `requestId`，互不影响。
+2. `addressId`：当前登录用户名下的收货地址 ID。
+3. `items`：订单明细列表，一条记录表示一个 SKU 及其购买数量。
+4. 同一登录用户重复提交同一个 `requestId`，后端返回第一次创建的订单。
+5. 不同用户可以使用相同 `requestId`，互不影响。
 
 ## 三、数据库约束
 
-`oms_order` 新增字段：
+`oms_order` 保存下单请求幂等号：
 
 ```sql
 request_id VARCHAR(64) NULL COMMENT '下单请求幂等号'
 ```
 
-新增唯一索引：
+唯一索引：
 
 ```sql
 UNIQUE KEY uk_user_request (user_id, request_id)
@@ -67,6 +77,8 @@ UNIQUE KEY uk_user_request (user_id, request_id)
 
 ```text
 接收下单请求
+-> 从 Authorization 解析 token
+-> 从 Redis 登录态读取当前 userId
 -> 根据 userId + requestId 查询是否已有订单
 -> 如果已有，直接返回已有订单
 -> 校验用户、地址
@@ -75,28 +87,20 @@ UNIQUE KEY uk_user_request (user_id, request_id)
 -> 逐个校验 SKU、商品状态
 -> 逐个锁定库存
 -> 汇总订单总金额
--> 插入订单主表，写入 requestId
+-> 插入订单主表，写入 userId 和 requestId
 -> 如果唯一索引冲突，释放本次已锁定库存并返回已有订单
--> 批量插入订单明细
+-> 插入订单明细
 -> 返回订单创建结果
 ```
 
-## 五、为什么重复 SKU 要拒绝
+## 五、错误处理
 
-同一个请求中如果出现两个相同 SKU：
-
-```json
-[
-  { "skuId": 1001, "quantity": 1 },
-  { "skuId": 1001, "quantity": 2 }
-]
-```
-
-理论上可以合并成 `quantity = 3`，但第一版选择直接拒绝，原因是：
-
-1. **接口语义更清楚**：一个 SKU 对应一条订单明细。
-2. **测试和排查更简单**：不用判断明细到底来自前端合并还是后端合并。
-3. **避免优惠扩展歧义**：后续如果不同明细有不同活动、赠品、价格快照，自动合并可能破坏业务含义。
+| 场景 | code | message |
+| --- | --- | --- |
+| 未传 `Authorization` | `401` | `missing login token` |
+| token 为空 | `401` | `missing login token` |
+| token 不存在或已退出 | `401` | `invalid login token` |
+| 收货地址不属于当前用户 | `404` | `address not found` |
 
 ## 六、和防超卖的区别
 
@@ -105,9 +109,3 @@ UNIQUE KEY uk_user_request (user_id, request_id)
 | 防超卖 | 多个请求不能把库存扣成负数 | `ims_inventory` 条件更新 |
 | 下单幂等 | 同一个请求不能创建多张订单 | `user_id + request_id` 唯一索引 |
 | 支付回调幂等 | 同一支付结果不能重复扣锁定库存 | `payment_no + status` 条件更新 |
-
-## 七、当前限制和后续扩展
-
-1. 当前支持多 SKU 下单，但暂不支持购物车、优惠券、促销分摊和运费计算。
-2. 当前重复 `requestId` 不校验请求体是否完全一致，直接返回已有订单；生产环境可以记录请求摘要做更严格校验。
-3. 当前没有使用 Redis 幂等锁，数据库唯一索引已经能保证最终正确性；后续如果并发量更高，可以增加 Redis 锁减少重复请求打到数据库。

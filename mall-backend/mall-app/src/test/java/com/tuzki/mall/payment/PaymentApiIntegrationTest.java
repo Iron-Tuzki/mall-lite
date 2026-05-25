@@ -8,6 +8,7 @@ import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.payment.entity.Payment;
 import com.tuzki.mall.payment.mapper.PaymentMapper;
+import com.tuzki.mall.user.service.LoginSessionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -42,6 +43,9 @@ class PaymentApiIntegrationTest {
 
     @Autowired
     private PaymentMapper paymentMapper;
+
+    @Autowired
+    private LoginSessionService loginSessionService;
 
     @Test
     void successfulCallbackUpdatesPaymentOrderAndDeductsLockedStock() throws Exception {
@@ -194,11 +198,11 @@ class PaymentApiIntegrationTest {
     private Order createOrder(Integer quantity, String remark) throws Exception {
         String requestId = "REQ-payment-" + System.nanoTime();
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content("""
                                 {
                                   "requestId": "%s",
-                                  "userId": %d,
                                   "addressId": %d,
                                   "items": [
                                     {
@@ -208,7 +212,7 @@ class PaymentApiIntegrationTest {
                                   ],
                                   "remark": "%s"
                                 }
-                                """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID,
+                                """.formatted(requestId, TestSeedData.ADDRESS_ID,
                                 TestSeedData.SKU_ID, quantity, remark)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
@@ -218,6 +222,10 @@ class PaymentApiIntegrationTest {
                 .eq(Order::getRequestId, requestId));
         assertNotNull(order);
         return order;
+    }
+
+    private String bearerToken() {
+        return "Bearer " + loginSessionService.createSession(TestSeedData.USER_ID);
     }
 
     private Payment getPayment(Long orderId) {

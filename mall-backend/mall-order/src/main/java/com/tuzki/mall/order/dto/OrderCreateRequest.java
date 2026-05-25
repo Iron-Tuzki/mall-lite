@@ -8,15 +8,12 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 /**
- * 创建订单请求，承载幂等请求号、用户、收货地址、订单明细列表和用户备注。
+ * 创建订单请求，承载幂等请求号、收货地址、订单明细列表和用户备注。
  */
 public class OrderCreateRequest {
 
     @NotBlank(message = "requestId must not be blank")
     private String requestId;
-
-    @NotNull(message = "userId must not be null")
-    private Long userId;
 
     @NotNull(message = "addressId must not be null")
     private Long addressId;
@@ -33,14 +30,6 @@ public class OrderCreateRequest {
 
     public void setRequestId(String requestId) {
         this.requestId = requestId;
-    }
-
-    public Long getUserId() {
-        return userId;
-    }
-
-    public void setUserId(Long userId) {
-        this.userId = userId;
     }
 
     public Long getAddressId() {

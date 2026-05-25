@@ -8,6 +8,7 @@ import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
+import com.tuzki.mall.user.service.LoginSessionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -45,11 +46,15 @@ class OrderCreateApiIntegrationTest {
     @Autowired
     private OrderItemMapper orderItemMapper;
 
+    @Autowired
+    private LoginSessionService loginSessionService;
+
     @Test
     void createOrderLocksStockAndCreatesOrderWithItemSnapshot() throws Exception {
         String requestId = newRequestId("create");
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(orderRequest(requestId, 2, "please ship soon")))
                 .andExpect(status().isOk())
@@ -98,6 +103,7 @@ class OrderCreateApiIntegrationTest {
         String requestId = newRequestId("multi-sku");
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(multiSkuOrderRequest(requestId, 2, 3, "multi sku order test")))
                 .andExpect(status().isOk())
@@ -139,6 +145,7 @@ class OrderCreateApiIntegrationTest {
         String requestBody = orderRequest(requestId, 2, "idempotent order test");
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(requestBody))
                 .andExpect(status().isOk())
@@ -149,6 +156,7 @@ class OrderCreateApiIntegrationTest {
         Order firstOrder = getOrderByRequestId(requestId);
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(requestBody))
                 .andExpect(status().isOk())
@@ -175,6 +183,7 @@ class OrderCreateApiIntegrationTest {
         String requestId = newRequestId("duplicate-sku");
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(duplicatedSkuOrderRequest(requestId)))
                 .andExpect(status().isOk())
@@ -196,6 +205,7 @@ class OrderCreateApiIntegrationTest {
         String requestId = newRequestId("insufficient");
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(orderRequest(requestId, 2, null)))
                 .andExpect(status().isOk())
@@ -216,6 +226,7 @@ class OrderCreateApiIntegrationTest {
         String requestId = newRequestId("cancel");
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(orderRequest(requestId, 2, "cancel order test")))
                 .andExpect(status().isOk())
@@ -242,6 +253,7 @@ class OrderCreateApiIntegrationTest {
         String requestId = newRequestId("double-cancel");
 
         mockMvc.perform(post("/api/orders")
+                        .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(orderRequest(requestId, 2, "double cancel order test")))
                 .andExpect(status().isOk())
@@ -267,12 +279,38 @@ class OrderCreateApiIntegrationTest {
                 .andExpect(jsonPath("$.message").value("order not found"));
     }
 
+    @Test
+    void createOrderRejectsMissingLoginToken() throws Exception {
+        String requestId = newRequestId("missing-token");
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType("application/json")
+                        .content(orderRequest(requestId, 2, "missing token test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("missing login token"));
+    }
+
+    @Test
+    void createOrderRejectsInvalidLoginToken() throws Exception {
+        String requestId = newRequestId("invalid-token");
+
+        mockMvc.perform(post("/api/orders")
+                        .header("Authorization", "Bearer invalid-token")
+                        .contentType("application/json")
+                        .content(orderRequest(requestId, 2, "invalid token test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("invalid login token"));
+    }
+
     private String orderRequest(String requestId, Integer quantity, String remark) {
         String remarkField = remark == null ? "" : ",\n  \"remark\": \"%s\"".formatted(remark);
         return """
                 {
                   "requestId": "%s",
-                  "userId": %d,
                   "addressId": %d,
                   "items": [
                     {
@@ -281,7 +319,7 @@ class OrderCreateApiIntegrationTest {
                     }
                   ]%s
                 }
-                """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID, TestSeedData.SKU_ID,
+                """.formatted(requestId, TestSeedData.ADDRESS_ID, TestSeedData.SKU_ID,
                 quantity, remarkField);
     }
 
@@ -289,7 +327,6 @@ class OrderCreateApiIntegrationTest {
         return """
                 {
                   "requestId": "%s",
-                  "userId": %d,
                   "addressId": %d,
                   "items": [
                     {
@@ -303,7 +340,7 @@ class OrderCreateApiIntegrationTest {
                   ],
                   "remark": "%s"
                 }
-                """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID,
+                """.formatted(requestId, TestSeedData.ADDRESS_ID,
                 TestSeedData.SKU_ID, firstQuantity, TestSeedData.SKU_ID_2, secondQuantity, remark);
     }
 
@@ -311,7 +348,6 @@ class OrderCreateApiIntegrationTest {
         return """
                 {
                   "requestId": "%s",
-                  "userId": %d,
                   "addressId": %d,
                   "items": [
                     {
@@ -324,8 +360,12 @@ class OrderCreateApiIntegrationTest {
                     }
                   ]
                 }
-                """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID,
+                """.formatted(requestId, TestSeedData.ADDRESS_ID,
                 TestSeedData.SKU_ID, TestSeedData.SKU_ID);
+    }
+
+    private String bearerToken() {
+        return "Bearer " + loginSessionService.createSession(TestSeedData.USER_ID);
     }
 
     private String newRequestId(String prefix) {

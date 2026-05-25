@@ -80,13 +80,13 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public OrderCreateVO createOrder(OrderCreateRequest request) {
-        Order existingOrder = getExistingOrderByRequestId(request.getUserId(), request.getRequestId());
+    public OrderCreateVO createOrder(Long userId, OrderCreateRequest request) {
+        Order existingOrder = getExistingOrderByRequestId(userId, request.getRequestId());
         if (existingOrder != null) {
             return toCreateVO(existingOrder);
         }
 
-        User user = getActiveUser(request.getUserId());
+        User user = getActiveUser(userId);
         Address address = getActiveAddress(user.getId(), request.getAddressId());
         List<OrderItemContext> itemContexts = buildItemContexts(request.getItems());
         BigDecimal totalAmount = calculateTotalAmount(itemContexts);
@@ -101,7 +101,7 @@ public class OrderServiceImpl implements OrderService {
         try {
             orderMapper.insert(order);
         } catch (DuplicateKeyException exception) {
-            Order concurrentExistingOrder = getExistingOrderByRequestId(request.getUserId(), request.getRequestId());
+            Order concurrentExistingOrder = getExistingOrderByRequestId(userId, request.getRequestId());
             if (concurrentExistingOrder != null) {
                 // 并发重复请求可能已经由另一个线程建单成功，本线程释放刚锁定的多条库存后返回已有订单。
                 releaseLockedStock(lockedItemContexts);
@@ -259,7 +259,7 @@ public class OrderServiceImpl implements OrderService {
         Order order = new Order();
         order.setOrderNo(orderNo);
         order.setRequestId(request.getRequestId());
-        order.setUserId(request.getUserId());
+        order.setUserId(address.getUserId());
         order.setTotalAmount(totalAmount);
         order.setPayAmount(totalAmount);
         order.setFreightAmount(ZERO_FREIGHT_AMOUNT);

@@ -14,10 +14,17 @@ oms_order 1 : N oms_order_item
 
 `POST /api/orders`
 
+请求头：
+
+```text
+Authorization: Bearer <token>
+```
+
+请求体：
+
 ```json
 {
   "requestId": "REQ-001",
-  "userId": 900001,
   "addressId": 900001,
   "items": [
     {
@@ -35,14 +42,16 @@ oms_order 1 : N oms_order_item
 
 说明：
 
-1. `items` 不能为空。
-2. 每个明细都必须有 `skuId` 和大于 0 的 `quantity`。
-3. 同一个请求中不允许重复传入相同 `skuId`。
+1. `userId` 不再由前端传入，后端从登录态 token 中解析当前用户。
+2. `items` 不能为空。
+3. 每个明细都必须有 `skuId` 和大于 0 的 `quantity`。
+4. 同一个请求中不允许重复传入相同 `skuId`。
 
 ## 三、核心流程
 
 ```text
-检查 userId + requestId 是否已有订单
+解析 Authorization token 得到 userId
+-> 检查 userId + requestId 是否已有订单
 -> 校验用户和收货地址
 -> 校验 items
 -> 校验重复 skuId
