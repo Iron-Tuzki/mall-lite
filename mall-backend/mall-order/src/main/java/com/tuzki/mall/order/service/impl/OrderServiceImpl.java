@@ -14,6 +14,7 @@ import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.order.vo.OrderDetailVO;
 import com.tuzki.mall.order.vo.OrderItemVO;
+import com.tuzki.mall.order.vo.OrderMainVO;
 import com.tuzki.mall.product.entity.Product;
 import com.tuzki.mall.product.entity.Sku;
 import com.tuzki.mall.product.mapper.ProductMapper;
@@ -128,7 +129,11 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(rollbackFor = Exception.class)
     public void cancelOrder(Long orderId) {
         Order order = getActiveOrder(orderId);
-        OrderStatus.fromCode(order.getStatus()).checkCanCancel();
+        OrderStatus status = OrderStatus.fromCode(order.getStatus());
+        if (status == OrderStatus.CANCELLED) {
+            return;
+        }
+        status.checkCanCancel();
         // 使用update更新order status来实现并发幂等
         int affectedRows = orderMapper.markCancelIfPending(orderId);
         if (affectedRows == 0) {
@@ -145,6 +150,11 @@ public class OrderServiceImpl implements OrderService {
         for (OrderItem orderItem : orderItems) {
             inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
         }
+    }
+
+    @Override
+    public List<OrderMainVO> listOrders(Long userId) {
+        return orderMapper.listOrders(userId);
     }
 
     private User getActiveUser(Long userId) {

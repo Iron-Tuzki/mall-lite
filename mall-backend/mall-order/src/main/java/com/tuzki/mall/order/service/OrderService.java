@@ -3,6 +3,9 @@ package com.tuzki.mall.order.service;
 import com.tuzki.mall.order.dto.OrderCreateRequest;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.order.vo.OrderDetailVO;
+import com.tuzki.mall.order.vo.OrderMainVO;
+
+import java.util.List;
 
 /**
  * 订单业务接口，负责创建订单以及后续订单状态流转。
@@ -31,4 +34,11 @@ public interface OrderService {
      * @param orderId 订单 ID
      */
     void cancelOrder(Long orderId);
+
+    /**
+     * 查询订单列表
+     * @param userId 用户id
+     * @return 包含部分字段的订单类
+     */
+    List<OrderMainVO> listOrders(Long userId);
 }

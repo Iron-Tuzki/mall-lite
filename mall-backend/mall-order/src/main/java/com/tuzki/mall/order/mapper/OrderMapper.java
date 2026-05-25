@@ -2,10 +2,14 @@ package com.tuzki.mall.order.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.tuzki.mall.order.entity.Order;
+import com.tuzki.mall.order.vo.OrderMainVO;
+import jakarta.validation.Valid;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 订单主表数据访问接口，负责订单主记录的新增、查询以及基于订单状态的原子更新。
@@ -47,4 +51,21 @@ public interface OrderMapper extends BaseMapper<Order> {
               AND deleted = 0
             """)
     int markCancelIfPending(@Param("orderId") Long orderId);
+
+    @Select("""
+                select id as orderId,
+                             order_no,
+                             request_id,
+                             user_id,
+                             total_amount,
+                             pay_amount,
+                             freight_amount,
+                             status,
+                             create_time
+                      from oms_order
+                      where user_id = #{userId}
+                        and deleted = 0
+                      order by create_time desc
+            """)
+    List<OrderMainVO> listOrders(@Valid @Param("userId") Long userId);
 }
