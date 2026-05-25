@@ -27,5 +27,10 @@
             <artifactId>mall-order</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.tuzki</groupId>
+            <artifactId>mall-inventory</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 </project>

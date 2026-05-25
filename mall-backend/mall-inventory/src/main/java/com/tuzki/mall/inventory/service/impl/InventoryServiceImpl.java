@@ -117,6 +117,26 @@ public class InventoryServiceImpl implements InventoryService {
         throw new BusinessException(400, "release stock failed");
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deductLockedStock(Long skuId, Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new BusinessException(400, "quantity must be greater than 0");
+        }
+
+        // 支付成功后只扣减 locked_stock，不再改 available_stock；available_stock 已在下单锁库存时扣过。
+        int affectedRows = inventoryMapper.deductLockedStock(skuId, quantity);
+        if (affectedRows == 1) {
+            return;
+        }
+
+        Inventory inventory = getActiveInventory(skuId);
+        if (inventory.getLockedStock() < quantity) {
+            throw new BusinessException(400, "locked stock insufficient");
+        }
+        throw new BusinessException(400, "deduct locked stock failed");
+    }
+
     private void ensureSkuExists(Long skuId) {
         Sku sku = skuMapper.selectOne(new LambdaQueryWrapper<Sku>()
                 .eq(Sku::getId, skuId)

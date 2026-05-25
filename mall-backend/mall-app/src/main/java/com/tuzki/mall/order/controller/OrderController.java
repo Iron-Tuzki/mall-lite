@@ -5,6 +5,8 @@ import com.tuzki.mall.order.dto.OrderCreateRequest;
 import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.order.vo.OrderDetailVO;
+import com.tuzki.mall.payment.service.PaymentService;
+import com.tuzki.mall.payment.vo.PaymentPayVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,8 +24,11 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    public OrderController(OrderService orderService) {
+    private final PaymentService paymentService;
+
+    public OrderController(OrderService orderService, PaymentService paymentService) {
         this.orderService = orderService;
+        this.paymentService = paymentService;
     }
 
     @PostMapping
@@ -40,5 +45,10 @@ public class OrderController {
     public Result<Void> cancelOrder(@PathVariable Long orderId) {
         orderService.cancelOrder(orderId);
         return Result.success();
+    }
+
+    @PostMapping("/{orderId}/pay")
+    public Result<PaymentPayVO> payOrder(@PathVariable Long orderId) {
+        return Result.success(paymentService.payOrder(orderId));
     }
 }

@@ -56,4 +56,12 @@ public interface InventoryService {
      * @param quantity 释放数量，必须大于 0
      */
     void releaseStock(Long skuId, Integer quantity);
+
+    /**
+     * 支付成功时扣减指定 SKU 的锁定库存。
+     *
+     * @param skuId SKU ID，用于定位要扣减的库存记录
+     * @param quantity 扣减数量，必须大于 0
+     */
+    void deductLockedStock(Long skuId, Integer quantity);
 }

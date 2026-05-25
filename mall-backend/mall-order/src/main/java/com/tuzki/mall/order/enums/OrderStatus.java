@@ -53,4 +53,20 @@ public enum OrderStatus {
         }
         throw new BusinessException(400, "order cannot be cancelled");
     }
+
+    public void checkCanPay() {
+        if (this == PENDING_PAYMENT) {
+            return;
+        }
+        if (this == PAID) {
+            throw new BusinessException(400, "paid order cannot be paid");
+        }
+        if (this == CANCELLED) {
+            throw new BusinessException(400, "cancelled order cannot be paid");
+        }
+        if (this == FINISHED) {
+            throw new BusinessException(400, "finished order cannot be paid");
+        }
+        throw new BusinessException(400, "order cannot be paid");
+    }
 }
