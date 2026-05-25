@@ -26,6 +26,7 @@ CREATE TABLE oms_order
 (
     id                      BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '订单ID',
     order_no                VARCHAR(64)     NOT NULL COMMENT '订单号',
+    request_id              VARCHAR(64)     NULL COMMENT '下单请求幂等号',
     user_id                 BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
     total_amount            DECIMAL(10, 2)  NOT NULL COMMENT '订单总金额',
     pay_amount              DECIMAL(10, 2)  NOT NULL COMMENT '实付金额',
@@ -46,6 +47,7 @@ CREATE TABLE oms_order
     deleted                 TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0未删除，1已删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_order_no (order_no),
+    UNIQUE KEY uk_user_request (user_id, request_id),
     KEY idx_user_status (user_id, status),
     KEY idx_create_time (create_time)
 ) ENGINE = InnoDB

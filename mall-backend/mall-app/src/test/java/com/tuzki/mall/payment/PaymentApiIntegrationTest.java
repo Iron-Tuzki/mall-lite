@@ -287,13 +287,14 @@ class PaymentApiIntegrationTest {
                         .contentType("application/json")
                         .content("""
                                 {
+                                  "requestId": "REQ-payment-%d",
                                   "userId": %d,
                                   "addressId": %d,
                                   "skuId": %d,
                                   "quantity": %d,
                                   "remark": "%s"
                                 }
-                                """.formatted(userId, addressId, skuId, quantity, remark)))
+                                """.formatted(System.nanoTime(), userId, addressId, skuId, quantity, remark)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 

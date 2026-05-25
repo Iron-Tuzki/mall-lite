@@ -76,13 +76,14 @@ class OrderCreateApiIntegrationTest {
                         .contentType("application/json")
                         .content("""
                                 {
+                                  "requestId": "REQ-create-%d",
                                   "userId": %d,
                                   "addressId": %d,
                                   "skuId": %d,
                                   "quantity": 2,
                                   "remark": "please ship soon"
                                 }
-                                """.formatted(userId, addressId, sku.getId())))
+                                """.formatted(System.nanoTime(), userId, addressId, sku.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.orderId").isNumber())
@@ -131,6 +132,61 @@ class OrderCreateApiIntegrationTest {
     }
 
     @Test
+    void createOrderReturnsExistingOrderWhenRequestIdIsRepeated() throws Exception {
+        Long userId = insertUser();
+        Long addressId = insertAddress(userId);
+        Sku sku = insertProductAndSku();
+        insertInventory(sku.getId(), 10, 0);
+        String requestId = "REQ-" + System.nanoTime();
+
+        String requestBody = """
+                {
+                  "requestId": "%s",
+                  "userId": %d,
+                  "addressId": %d,
+                  "skuId": %d,
+                  "quantity": 2,
+                  "remark": "idempotent order test"
+                }
+                """.formatted(requestId, userId, addressId, sku.getId());
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType("application/json")
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderId").isNumber())
+                .andExpect(jsonPath("$.data.orderNo").isString());
+
+        Order firstOrder = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getUserId, userId)
+                .eq(Order::getRequestId, requestId));
+        assertNotNull(firstOrder);
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType("application/json")
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderId").value(firstOrder.getId()))
+                .andExpect(jsonPath("$.data.orderNo").value(firstOrder.getOrderNo()))
+                .andExpect(jsonPath("$.data.status").value(10))
+                .andExpect(jsonPath("$.data.totalAmount").value(398.00));
+
+        assertEquals(1L, orderMapper.selectCount(new LambdaQueryWrapper<Order>()
+                .eq(Order::getUserId, userId)
+                .eq(Order::getRequestId, requestId)));
+        assertEquals(1L, orderItemMapper.selectCount(new LambdaQueryWrapper<OrderItem>()
+                .eq(OrderItem::getOrderId, firstOrder.getId())));
+
+        Inventory inventory = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                .eq(Inventory::getSkuId, sku.getId()));
+        assertEquals(8, inventory.getAvailableStock());
+        assertEquals(2, inventory.getLockedStock());
+        assertEquals(1, inventory.getVersion());
+    }
+
+    @Test
     void createOrderRejectsInsufficientStockAndDoesNotCreateOrder() throws Exception {
         Long userId = insertUser();
         Long addressId = insertAddress(userId);
@@ -141,12 +197,13 @@ class OrderCreateApiIntegrationTest {
                         .contentType("application/json")
                         .content("""
                                 {
+                                  "requestId": "REQ-insufficient-%d",
                                   "userId": %d,
                                   "addressId": %d,
                                   "skuId": %d,
                                   "quantity": 2
                                 }
-                                """.formatted(userId, addressId, sku.getId())))
+                                """.formatted(System.nanoTime(), userId, addressId, sku.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(400))
@@ -171,13 +228,14 @@ class OrderCreateApiIntegrationTest {
                         .contentType("application/json")
                         .content("""
                                 {
+                                  "requestId": "REQ-cancel-%d",
                                   "userId": %d,
                                   "addressId": %d,
                                   "skuId": %d,
                                   "quantity": 2,
                                   "remark": "cancel order test"
                                 }
-                                """.formatted(userId, addressId, sku.getId())))
+                                """.formatted(System.nanoTime(), userId, addressId, sku.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
@@ -212,13 +270,14 @@ class OrderCreateApiIntegrationTest {
                         .contentType("application/json")
                         .content("""
                                 {
+                                  "requestId": "REQ-double-cancel-%d",
                                   "userId": %d,
                                   "addressId": %d,
                                   "skuId": %d,
                                   "quantity": 2,
                                   "remark": "double cancel order test"
                                 }
-                                """.formatted(userId, addressId, sku.getId())))
+                                """.formatted(System.nanoTime(), userId, addressId, sku.getId())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 

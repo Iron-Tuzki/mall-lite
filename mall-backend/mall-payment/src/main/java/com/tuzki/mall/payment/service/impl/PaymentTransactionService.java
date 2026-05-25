@@ -53,7 +53,6 @@ public class PaymentTransactionService {
         Order order = getActiveOrder(orderId);
         OrderStatus.fromCode(order.getStatus()).checkCanPay();
 
-        // 幂等
         Payment existingPendingPayment = getPendingPayment(order.getId());
         if (existingPendingPayment != null) {
             return toPaymentPayVO(existingPendingPayment, order);
@@ -66,22 +65,27 @@ public class PaymentTransactionService {
 
     @Transactional(rollbackFor = Exception.class)
     public PaymentPayVO handleCallback(String paymentNo, MockPaymentResult mockResult) {
+        int affectedRows = markPaymentTerminalIfPending(paymentNo, mockResult);
         Payment payment = getActivePayment(paymentNo);
         Order order = getActiveOrder(payment.getOrderId());
-        PaymentStatus currentStatus = PaymentStatus.fromCode(payment.getStatus());
 
-        // 支付流水进入终态后，后续重复或冲突回调只返回当前状态，不再重复改订单或扣库存。
-        if (currentStatus != PaymentStatus.PENDING) {
+        // affectedRows 为 0 表示支付流水已被其他回调处理，直接返回当前状态，避免重复扣库存。
+        if (affectedRows == 0) {
             return toPaymentPayVO(payment, order);
         }
 
         if (mockResult == MockPaymentResult.SUCCESS) {
             confirmPaymentSuccess(payment, order);
-            return toPaymentPayVO(payment, order);
         }
-
-        markPaymentFailed(payment, mockResult);
         return toPaymentPayVO(payment, order);
+    }
+
+    private int markPaymentTerminalIfPending(String paymentNo, MockPaymentResult mockResult) {
+        String callbackContent = buildCallbackContent(mockResult);
+        if (mockResult == MockPaymentResult.SUCCESS) {
+            return paymentMapper.markSuccessIfPending(paymentNo, LocalDateTime.now(), callbackContent);
+        }
+        return paymentMapper.markFailedIfPending(paymentNo, callbackContent);
     }
 
     private void confirmPaymentSuccess(Payment payment, Order order) {
@@ -94,26 +98,16 @@ public class PaymentTransactionService {
             throw new BusinessException(404, "order item not found");
         }
 
-        LocalDateTime payTime = LocalDateTime.now();
-        payment.setStatus(PaymentStatus.SUCCESS.getCode());
-        payment.setPayTime(payTime);
-        payment.setCallbackContent(buildCallbackContent(MockPaymentResult.SUCCESS));
-        paymentMapper.updateById(payment);
-
-        // 遍历订单明细，逐个扣减库存
         for (OrderItem orderItem : orderItems) {
             inventoryService.deductLockedStock(orderItem.getSkuId(), orderItem.getQuantity());
         }
 
+        int affectedRows = orderMapper.markPaidIfPending(order.getId(), payment.getPayTime());
+        if (affectedRows != 1) {
+            throw new BusinessException(400, "mark order paid failed");
+        }
         order.setStatus(OrderStatus.PAID.getCode());
-        order.setPayTime(payTime);
-        orderMapper.updateById(order);
-    }
-
-    private void markPaymentFailed(Payment payment, MockPaymentResult mockResult) {
-        payment.setStatus(PaymentStatus.FAILED.getCode());
-        payment.setCallbackContent(buildCallbackContent(mockResult));
-        paymentMapper.updateById(payment);
+        order.setPayTime(payment.getPayTime());
     }
 
     private Order getActiveOrder(Long orderId) {

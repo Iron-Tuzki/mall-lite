@@ -1,12 +1,16 @@
 package com.tuzki.mall.order.dto;
 
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * 创建订单请求，承载用户、收货地址、SKU、购买数量和用户备注。
+ * 创建订单请求，承载幂等请求号、用户、收货地址、SKU、购买数量和用户备注。
  */
 public class OrderCreateRequest {
+
+    @NotBlank(message = "requestId must not be blank")
+    private String requestId;
 
     @NotNull(message = "userId must not be null")
     private Long userId;
@@ -22,6 +26,14 @@ public class OrderCreateRequest {
     private Integer quantity;
 
     private String remark;
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
+    }
 
     public Long getUserId() {
         return userId;

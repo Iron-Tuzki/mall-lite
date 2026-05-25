@@ -14,6 +14,8 @@ public class Order extends BaseEntity {
 
     private String orderNo;
 
+    private String requestId;
+
     private Long userId;
 
     private BigDecimal totalAmount;
@@ -50,6 +52,14 @@ public class Order extends BaseEntity {
 
     public void setOrderNo(String orderNo) {
         this.orderNo = orderNo;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
     }
 
     public Long getUserId() {

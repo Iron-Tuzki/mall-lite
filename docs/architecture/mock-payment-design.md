@@ -82,12 +82,12 @@ POST /api/payments/{paymentNo}/callback
 ```text
 调用支付回调接口，mockResult = SUCCESS
 -> 开启本地事务
--> 查询支付流水
--> 如果支付流水已是终态，直接返回当前结果
+-> 原子更新支付流水：PENDING -> SUCCESS
+-> 如果影响行数为 0，说明已被其他回调处理，直接返回当前状态
 -> 校验订单必须是待支付
--> 更新支付流水为 SUCCESS，并写入 pay_time
 -> 按订单明细扣减 SKU 锁定库存
--> 更新订单为已支付，并写入 pay_time
+-> 原子更新订单：PENDING_PAYMENT -> PAID，并写入 pay_time
+-> 如果订单影响行数不是 1，抛出异常并回滚当前事务
 -> 提交事务
 ```
 
@@ -96,15 +96,14 @@ POST /api/payments/{paymentNo}/callback
 ```text
 调用支付回调接口，mockResult = FAILED
 -> 开启本地事务
--> 查询支付流水
--> 如果支付流水已是终态，直接返回当前结果
--> 更新支付流水为 FAILED
+-> 原子更新支付流水：PENDING -> FAILED
+-> 如果影响行数为 0，说明已被其他回调处理，直接返回当前状态
 -> 订单保持待支付
 -> 库存保持锁定
 -> 提交事务
 ```
 
-## 四、回调幂等设计
+## 四、回调幂等和并发控制设计
 
 真实支付渠道可能因为网络抖动、超时重试等原因，多次推送同一笔支付回调。因此回调接口必须具备幂等能力。
 
@@ -113,6 +112,38 @@ POST /api/payments/{paymentNo}/callback
 1. 只有 `PENDING` 支付流水允许被回调推进状态。
 2. `SUCCESS`、`FAILED`、`CLOSED` 都视为终态。
 3. 支付流水已进入终态后，后续重复或冲突回调只返回当前状态，不再重复扣库存、不再重复更新订单。
+
+为了防止两个回调请求并发读到 `PENDING` 后同时处理，代码不再使用“先查再改”的方式，而是使用数据库条件更新做 CAS 抢占：
+
+```sql
+UPDATE pms_payment
+SET status = 20,
+    pay_time = NOW(),
+    callback_content = ?,
+    update_time = NOW()
+WHERE payment_no = ?
+  AND status = 10
+  AND deleted = 0;
+```
+
+影响行数的含义：
+
+1. `affectedRows = 1`：当前请求抢占成功，可以继续扣减锁定库存并更新订单。
+2. `affectedRows = 0`：支付流水不存在、已删除，或已经被其他回调处理；当前请求只查询并返回当前状态。
+
+支付成功后，订单状态也会再做一次条件更新：
+
+```sql
+UPDATE oms_order
+SET status = 20,
+    pay_time = ?,
+    update_time = NOW()
+WHERE id = ?
+  AND status = 10
+  AND deleted = 0;
+```
+
+订单 CAS 的作用是作为第二道防线，避免订单已经被取消、关闭或其他流程修改后，支付回调仍然把订单强行改成已支付。如果订单 CAS 失败，当前支付回调事务会回滚，支付流水的成功更新和库存扣减也不会提交。
 
 这样可以避免两个风险：
 

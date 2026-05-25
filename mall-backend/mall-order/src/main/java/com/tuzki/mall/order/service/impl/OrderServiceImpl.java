@@ -21,6 +21,7 @@ import com.tuzki.mall.user.entity.Address;
 import com.tuzki.mall.user.entity.User;
 import com.tuzki.mall.user.mapper.AddressMapper;
 import com.tuzki.mall.user.mapper.UserMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +32,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 订单业务默认实现，编排用户、地址、商品、库存和订单明细完成下单流程。
+ * 订单业务默认实现，编排用户、地址、商品、库存和订单明细完成下单、查询和取消流程。
  */
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -75,20 +76,31 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public OrderCreateVO createOrder(OrderCreateRequest request) {
-        // 校验基础信息
+        Order existingOrder = getExistingOrderByRequestId(request.getUserId(), request.getRequestId());
+        if (existingOrder != null) {
+            return toCreateVO(existingOrder);
+        }
+
         User user = getActiveUser(request.getUserId());
         Address address = getActiveAddress(user.getId(), request.getAddressId());
         Sku sku = getActiveSku(request.getSkuId());
         Product product = getActiveProduct(sku.getProductId());
 
         BigDecimal totalAmount = sku.getPrice().multiply(BigDecimal.valueOf(request.getQuantity()));
-        String orderNo = generateOrderNo();
-
-        // 锁库存、创建订单、创建订单明细必须在同一个事务中完成，避免库存已锁定但订单创建失败。
         inventoryService.lockStock(sku.getId(), request.getQuantity());
 
-        Order order = buildOrder(request, address, totalAmount, orderNo);
-        orderMapper.insert(order);
+        Order order = buildOrder(request, address, totalAmount, generateOrderNo());
+        try {
+            orderMapper.insert(order);
+        } catch (DuplicateKeyException exception) {
+            Order concurrentExistingOrder = getExistingOrderByRequestId(request.getUserId(), request.getRequestId());
+            if (concurrentExistingOrder != null) {
+                // 并发重复请求可能已经由另一个线程建单成功，本线程释放刚锁定的库存后返回已有订单。
+                inventoryService.releaseStock(sku.getId(), request.getQuantity());
+                return toCreateVO(concurrentExistingOrder);
+            }
+            throw exception;
+        }
 
         OrderItem orderItem = buildOrderItem(request, sku, product, order);
         orderItemMapper.insert(orderItem);
@@ -98,16 +110,8 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderDetailVO getOrderById(Long orderId) {
-        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
-                .eq(Order::getId, orderId)
-                .eq(Order::getDeleted, NOT_DELETED));
-        if (order == null) {
-            throw new BusinessException(404, "order not found");
-        }
-
-        List<OrderItem> orderItems = orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
-                .eq(OrderItem::getOrderId, order.getId())
-                .eq(OrderItem::getDeleted, NOT_DELETED));
+        Order order = getActiveOrder(orderId);
+        List<OrderItem> orderItems = getActiveOrderItems(order.getId());
         return toDetailVO(order, orderItems);
     }
 
@@ -118,7 +122,6 @@ public class OrderServiceImpl implements OrderService {
         OrderStatus.fromCode(order.getStatus()).checkCanCancel();
 
         List<OrderItem> orderItems = getActiveOrderItems(order.getId());
-        // 取消订单和释放库存必须在同一个事务中完成，避免订单已取消但库存仍被锁定。
         for (OrderItem orderItem : orderItems) {
             inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
         }
@@ -182,6 +185,14 @@ public class OrderServiceImpl implements OrderService {
         return order;
     }
 
+    private Order getExistingOrderByRequestId(Long userId, String requestId) {
+        return orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getUserId, userId)
+                .eq(Order::getRequestId, requestId)
+                .eq(Order::getDeleted, NOT_DELETED)
+                .last("limit 1"));
+    }
+
     private List<OrderItem> getActiveOrderItems(Long orderId) {
         return orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
                 .eq(OrderItem::getOrderId, orderId)
@@ -191,6 +202,7 @@ public class OrderServiceImpl implements OrderService {
     private Order buildOrder(OrderCreateRequest request, Address address, BigDecimal totalAmount, String orderNo) {
         Order order = new Order();
         order.setOrderNo(orderNo);
+        order.setRequestId(request.getRequestId());
         order.setUserId(request.getUserId());
         order.setTotalAmount(totalAmount);
         order.setPayAmount(totalAmount);

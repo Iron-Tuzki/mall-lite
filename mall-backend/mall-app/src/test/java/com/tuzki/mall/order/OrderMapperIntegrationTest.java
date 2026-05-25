@@ -11,10 +11,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+/**
+ * 订单 Mapper 集成测试，用于验证订单主表和订单明细表的基础读写以及订单状态条件更新能力。
+ */
 @SpringBootTest
 @Transactional
 class OrderMapperIntegrationTest {
@@ -29,6 +33,7 @@ class OrderMapperIntegrationTest {
     void orderAndOrderItemMappersCanInsertAndQueryTradeTables() {
         Order order = new Order();
         order.setOrderNo("ORDER-" + System.nanoTime());
+        order.setRequestId("REQ-MAPPER-" + System.nanoTime());
         order.setUserId(1L);
         order.setTotalAmount(new BigDecimal("199.00"));
         order.setPayAmount(new BigDecimal("199.00"));
@@ -68,5 +73,40 @@ class OrderMapperIntegrationTest {
                 .eq(Order::getOrderNo, order.getOrderNo())));
         assertEquals(1L, orderItemMapper.selectCount(new LambdaQueryWrapper<OrderItem>()
                 .eq(OrderItem::getOrderId, order.getId())));
+    }
+
+    @Test
+    void onlyPendingOrderCanBeMarkedAsPaidOnce() {
+        Order order = buildPendingOrder("ORDER-CAS-");
+        orderMapper.insert(order);
+
+        int firstAffectedRows = orderMapper.markPaidIfPending(order.getId(), LocalDateTime.now());
+        int secondAffectedRows = orderMapper.markPaidIfPending(order.getId(), LocalDateTime.now());
+
+        Order currentOrder = orderMapper.selectById(order.getId());
+        assertEquals(1, firstAffectedRows);
+        assertEquals(0, secondAffectedRows);
+        assertEquals(20, currentOrder.getStatus());
+        assertNotNull(currentOrder.getPayTime());
+    }
+
+    private Order buildPendingOrder(String orderNoPrefix) {
+        Order order = new Order();
+        order.setOrderNo(orderNoPrefix + System.nanoTime());
+        order.setRequestId("REQ-CAS-" + System.nanoTime());
+        order.setUserId(1L);
+        order.setTotalAmount(new BigDecimal("199.00"));
+        order.setPayAmount(new BigDecimal("199.00"));
+        order.setFreightAmount(BigDecimal.ZERO);
+        order.setStatus(10);
+        order.setReceiverName("测试用户");
+        order.setReceiverPhone("13800000000");
+        order.setReceiverProvince("广东省");
+        order.setReceiverCity("深圳市");
+        order.setReceiverDistrict("南山区");
+        order.setReceiverDetailAddress("科技园测试地址");
+        order.setRemark("order cas test");
+        order.setDeleted(0);
+        return order;
     }
 }
