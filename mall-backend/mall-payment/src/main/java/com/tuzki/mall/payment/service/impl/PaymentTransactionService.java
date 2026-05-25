@@ -9,6 +9,7 @@ import com.tuzki.mall.order.enums.OrderStatus;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.payment.entity.Payment;
+import com.tuzki.mall.payment.enums.MockPaymentResult;
 import com.tuzki.mall.payment.enums.PayChannel;
 import com.tuzki.mall.payment.enums.PaymentStatus;
 import com.tuzki.mall.payment.mapper.PaymentMapper;
@@ -22,7 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 支付事务服务，负责在同一事务中写入支付流水、更新订单状态并扣减锁定库存。
+ * 支付事务服务，负责在本地事务中创建支付流水、处理回调、更新订单状态并确认扣减锁定库存。
  */
 @Service
 public class PaymentTransactionService {
@@ -48,31 +49,71 @@ public class PaymentTransactionService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public PaymentPayVO confirmPaymentSuccess(Long orderId) {
-        // 1.校验订单状态
+    public PaymentPayVO createPendingPayment(Long orderId) {
         Order order = getActiveOrder(orderId);
         OrderStatus.fromCode(order.getStatus()).checkCanPay();
-        // 2.查询订单明细
+
+        // 幂等
+        Payment existingPendingPayment = getPendingPayment(order.getId());
+        if (existingPendingPayment != null) {
+            return toPaymentPayVO(existingPendingPayment, order);
+        }
+
+        Payment payment = buildPendingPayment(order);
+        paymentMapper.insert(payment);
+        return toPaymentPayVO(payment, order);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public PaymentPayVO handleCallback(String paymentNo, MockPaymentResult mockResult) {
+        Payment payment = getActivePayment(paymentNo);
+        Order order = getActiveOrder(payment.getOrderId());
+        PaymentStatus currentStatus = PaymentStatus.fromCode(payment.getStatus());
+
+        // 支付流水进入终态后，后续重复或冲突回调只返回当前状态，不再重复改订单或扣库存。
+        if (currentStatus != PaymentStatus.PENDING) {
+            return toPaymentPayVO(payment, order);
+        }
+
+        if (mockResult == MockPaymentResult.SUCCESS) {
+            confirmPaymentSuccess(payment, order);
+            return toPaymentPayVO(payment, order);
+        }
+
+        markPaymentFailed(payment, mockResult);
+        return toPaymentPayVO(payment, order);
+    }
+
+    private void confirmPaymentSuccess(Payment payment, Order order) {
+        OrderStatus.fromCode(order.getStatus()).checkCanPay();
+
         List<OrderItem> orderItems = orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
                 .eq(OrderItem::getOrderId, order.getId())
                 .eq(OrderItem::getDeleted, NOT_DELETED));
         if (orderItems.isEmpty()) {
             throw new BusinessException(404, "order item not found");
         }
-        // 3.生成支付流水
+
         LocalDateTime payTime = LocalDateTime.now();
-        Payment payment = buildPayment(order, payTime);
-        paymentMapper.insert(payment);
-        // 4.按订单明细分别扣减锁定库存
+        payment.setStatus(PaymentStatus.SUCCESS.getCode());
+        payment.setPayTime(payTime);
+        payment.setCallbackContent(buildCallbackContent(MockPaymentResult.SUCCESS));
+        paymentMapper.updateById(payment);
+
+        // 遍历订单明细，逐个扣减库存
         for (OrderItem orderItem : orderItems) {
             inventoryService.deductLockedStock(orderItem.getSkuId(), orderItem.getQuantity());
         }
-        // 5.更改订单状态
+
         order.setStatus(OrderStatus.PAID.getCode());
         order.setPayTime(payTime);
         orderMapper.updateById(order);
+    }
 
-        return toPaymentPayVO(payment, order);
+    private void markPaymentFailed(Payment payment, MockPaymentResult mockResult) {
+        payment.setStatus(PaymentStatus.FAILED.getCode());
+        payment.setCallbackContent(buildCallbackContent(mockResult));
+        paymentMapper.updateById(payment);
     }
 
     private Order getActiveOrder(Long orderId) {
@@ -85,7 +126,25 @@ public class PaymentTransactionService {
         return order;
     }
 
-    private Payment buildPayment(Order order, LocalDateTime payTime) {
+    private Payment getActivePayment(String paymentNo) {
+        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getPaymentNo, paymentNo)
+                .eq(Payment::getDeleted, NOT_DELETED));
+        if (payment == null) {
+            throw new BusinessException(404, "payment not found");
+        }
+        return payment;
+    }
+
+    private Payment getPendingPayment(Long orderId) {
+        return paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, orderId)
+                .eq(Payment::getStatus, PaymentStatus.PENDING.getCode())
+                .eq(Payment::getDeleted, NOT_DELETED)
+                .last("limit 1"));
+    }
+
+    private Payment buildPendingPayment(Order order) {
         Payment payment = new Payment();
         payment.setPaymentNo(generatePaymentNo());
         payment.setOrderId(order.getId());
@@ -93,11 +152,13 @@ public class PaymentTransactionService {
         payment.setUserId(order.getUserId());
         payment.setPayChannel(PayChannel.MOCK.getCode());
         payment.setPayAmount(order.getPayAmount());
-        payment.setStatus(PaymentStatus.SUCCESS.getCode());
-        payment.setPayTime(payTime);
-        payment.setCallbackContent("{\"channel\":\"mock\",\"result\":\"success\"}");
+        payment.setStatus(PaymentStatus.PENDING.getCode());
         payment.setDeleted(NOT_DELETED);
         return payment;
+    }
+
+    private String buildCallbackContent(MockPaymentResult mockResult) {
+        return "{\"channel\":\"mock\",\"result\":\"" + mockResult.name().toLowerCase() + "\"}";
     }
 
     private PaymentPayVO toPaymentPayVO(Payment payment, Order order) {

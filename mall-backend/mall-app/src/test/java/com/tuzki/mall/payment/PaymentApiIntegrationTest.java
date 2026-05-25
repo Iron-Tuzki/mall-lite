@@ -65,35 +65,40 @@ class PaymentApiIntegrationTest {
     private PaymentMapper paymentMapper;
 
     @Test
-    void payPendingOrderCreatesSuccessfulPaymentAndDeductsLockedStock() throws Exception {
+    void successfulCallbackUpdatesPaymentOrderAndDeductsLockedStock() throws Exception {
         Long userId = insertUser();
         Long addressId = insertAddress(userId);
         Sku sku = insertProductAndSku();
         insertInventory(sku.getId(), 10, 0);
-
-        mockMvc.perform(post("/api/orders")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "userId": %d,
-                                  "addressId": %d,
-                                  "skuId": %d,
-                                  "quantity": 2,
-                                  "remark": "payment order test"
-                                }
-                                """.formatted(userId, addressId, sku.getId())))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
-
-        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
-                .eq(Order::getUserId, userId)
-                .eq(Order::getRemark, "payment order test"));
-        assertNotNull(order);
+        Order order = createOrder(userId, addressId, sku.getId(), 2, "payment order test");
 
         mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.paymentNo").isString())
+                .andExpect(jsonPath("$.data.orderId").value(order.getId()))
+                .andExpect(jsonPath("$.data.orderStatus").value(10))
+                .andExpect(jsonPath("$.data.paymentStatus").value(10))
+                .andExpect(jsonPath("$.data.payAmount").value(398.00));
+
+        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, order.getId()));
+        assertNotNull(payment);
+        assertEquals(order.getOrderNo(), payment.getOrderNo());
+        assertEquals(userId, payment.getUserId());
+        assertEquals(new BigDecimal("398.00"), payment.getPayAmount());
+        assertEquals(10, payment.getStatus());
+
+        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "mockResult": "SUCCESS"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.paymentNo").value(payment.getPaymentNo()))
                 .andExpect(jsonPath("$.data.orderId").value(order.getId()))
                 .andExpect(jsonPath("$.data.orderStatus").value(20))
                 .andExpect(jsonPath("$.data.paymentStatus").value(20))
@@ -103,20 +108,78 @@ class PaymentApiIntegrationTest {
         assertEquals(20, paidOrder.getStatus());
         assertNotNull(paidOrder.getPayTime());
 
-        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
-                .eq(Payment::getOrderId, order.getId()));
-        assertNotNull(payment);
-        assertEquals(order.getOrderNo(), payment.getOrderNo());
-        assertEquals(userId, payment.getUserId());
-        assertEquals(new BigDecimal("398.00"), payment.getPayAmount());
-        assertEquals(20, payment.getStatus());
-        assertNotNull(payment.getPayTime());
+        Payment successfulPayment = paymentMapper.selectById(payment.getId());
+        assertEquals(20, successfulPayment.getStatus());
+        assertNotNull(successfulPayment.getPayTime());
 
-        Inventory inventory = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                .eq(Inventory::getSkuId, sku.getId()));
+        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "mockResult": "SUCCESS"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderStatus").value(20))
+                .andExpect(jsonPath("$.data.paymentStatus").value(20));
+
+        Inventory inventory = getInventory(sku.getId());
         assertEquals(8, inventory.getAvailableStock());
         assertEquals(0, inventory.getLockedStock());
         assertEquals(2, inventory.getVersion());
+    }
+
+    @Test
+    void failedCallbackOnlyMarksPaymentFailedAndKeepsOrderPending() throws Exception {
+        Long userId = insertUser();
+        Long addressId = insertAddress(userId);
+        Sku sku = insertProductAndSku();
+        insertInventory(sku.getId(), 10, 0);
+        Order order = createOrder(userId, addressId, sku.getId(), 2, "failed payment order test");
+
+        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, order.getId()));
+        assertNotNull(payment);
+
+        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "mockResult": "FAILED"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderStatus").value(10))
+                .andExpect(jsonPath("$.data.paymentStatus").value(30));
+
+        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "mockResult": "FAILED"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderStatus").value(10))
+                .andExpect(jsonPath("$.data.paymentStatus").value(30));
+
+        Order pendingOrder = orderMapper.selectById(order.getId());
+        assertEquals(10, pendingOrder.getStatus());
+
+        Payment failedPayment = paymentMapper.selectById(payment.getId());
+        assertEquals(30, failedPayment.getStatus());
+
+        Inventory inventory = getInventory(sku.getId());
+        assertEquals(8, inventory.getAvailableStock());
+        assertEquals(2, inventory.getLockedStock());
+        assertEquals(1, inventory.getVersion());
     }
 
     @Test
@@ -125,27 +188,23 @@ class PaymentApiIntegrationTest {
         Long addressId = insertAddress(userId);
         Sku sku = insertProductAndSku();
         insertInventory(sku.getId(), 10, 0);
+        Order order = createOrder(userId, addressId, sku.getId(), 1, "double payment order test");
 
-        mockMvc.perform(post("/api/orders")
-                        .contentType("application/json")
-                        .content("""
-                                {
-                                  "userId": %d,
-                                  "addressId": %d,
-                                  "skuId": %d,
-                                  "quantity": 1,
-                                  "remark": "double payment order test"
-                                }
-                                """.formatted(userId, addressId, sku.getId())))
+        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
-        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
-                .eq(Order::getUserId, userId)
-                .eq(Order::getRemark, "double payment order test"));
-        assertNotNull(order);
+        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, order.getId()));
+        assertNotNull(payment);
 
-        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
+        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "mockResult": "SUCCESS"
+                                }
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
@@ -154,6 +213,100 @@ class PaymentApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("paid order cannot be paid"));
+    }
+
+    @Test
+    void payOrderReturnsExistingPendingPaymentBeforeCallback() throws Exception {
+        Long userId = insertUser();
+        Long addressId = insertAddress(userId);
+        Sku sku = insertProductAndSku();
+        insertInventory(sku.getId(), 10, 0);
+        Order order = createOrder(userId, addressId, sku.getId(), 1, "pending payment idempotent test");
+
+        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderStatus").value(10))
+                .andExpect(jsonPath("$.data.paymentStatus").value(10));
+
+        Long paymentCount = paymentMapper.selectCount(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, order.getId()));
+        assertEquals(1L, paymentCount);
+    }
+
+    @Test
+    void terminalPaymentIgnoresConflictingCallbackResult() throws Exception {
+        Long userId = insertUser();
+        Long addressId = insertAddress(userId);
+        Sku sku = insertProductAndSku();
+        insertInventory(sku.getId(), 10, 0);
+        Order order = createOrder(userId, addressId, sku.getId(), 1, "terminal payment callback test");
+
+        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, order.getId()));
+        assertNotNull(payment);
+
+        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "mockResult": "SUCCESS"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/payments/{paymentNo}/callback", payment.getPaymentNo())
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "mockResult": "FAILED"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderStatus").value(20))
+                .andExpect(jsonPath("$.data.paymentStatus").value(20));
+
+        Inventory inventory = getInventory(sku.getId());
+        assertEquals(9, inventory.getAvailableStock());
+        assertEquals(0, inventory.getLockedStock());
+        assertEquals(2, inventory.getVersion());
+    }
+
+    private Order createOrder(Long userId, Long addressId, Long skuId, Integer quantity, String remark) throws Exception {
+        mockMvc.perform(post("/api/orders")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "userId": %d,
+                                  "addressId": %d,
+                                  "skuId": %d,
+                                  "quantity": %d,
+                                  "remark": "%s"
+                                }
+                                """.formatted(userId, addressId, skuId, quantity, remark)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getUserId, userId)
+                .eq(Order::getRemark, remark));
+        assertNotNull(order);
+        return order;
+    }
+
+    private Inventory getInventory(Long skuId) {
+        return inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+                .eq(Inventory::getSkuId, skuId));
     }
 
     private Long insertUser() {
