@@ -200,8 +200,12 @@ class PaymentApiIntegrationTest {
                                   "requestId": "%s",
                                   "userId": %d,
                                   "addressId": %d,
-                                  "skuId": %d,
-                                  "quantity": %d,
+                                  "items": [
+                                    {
+                                      "skuId": %d,
+                                      "quantity": %d
+                                    }
+                                  ],
                                   "remark": "%s"
                                 }
                                 """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID,

@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -93,6 +94,46 @@ class OrderCreateApiIntegrationTest {
     }
 
     @Test
+    void createOrderSupportsMultipleSkusAndCreatesMultipleOrderItems() throws Exception {
+        String requestId = newRequestId("multi-sku");
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType("application/json")
+                        .content(multiSkuOrderRequest(requestId, 2, 3, "multi sku order test")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderId").isNumber())
+                .andExpect(jsonPath("$.data.status").value(10))
+                .andExpect(jsonPath("$.data.totalAmount").value(575.00))
+                .andExpect(jsonPath("$.data.payAmount").value(575.00));
+
+        Order order = getOrderByRequestId(requestId);
+        assertEquals(new BigDecimal("575.00"), order.getTotalAmount());
+
+        mockMvc.perform(get("/api/orders/{orderId}", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].skuId").value(TestSeedData.SKU_ID))
+                .andExpect(jsonPath("$.data.items[0].quantity").value(2))
+                .andExpect(jsonPath("$.data.items[0].totalAmount").value(398.00))
+                .andExpect(jsonPath("$.data.items[1].skuId").value(TestSeedData.SKU_ID_2))
+                .andExpect(jsonPath("$.data.items[1].quantity").value(3))
+                .andExpect(jsonPath("$.data.items[1].totalAmount").value(177.00));
+
+        List<OrderItem> orderItems = getOrderItems(order.getId());
+        assertEquals(2, orderItems.size());
+
+        Inventory firstInventory = getInventory(TestSeedData.SKU_ID);
+        assertEquals(998, firstInventory.getAvailableStock());
+        assertEquals(2, firstInventory.getLockedStock());
+
+        Inventory secondInventory = getInventory(TestSeedData.SKU_ID_2);
+        assertEquals(997, secondInventory.getAvailableStock());
+        assertEquals(3, secondInventory.getLockedStock());
+    }
+
+    @Test
     void createOrderReturnsExistingOrderWhenRequestIdIsRepeated() throws Exception {
         String requestId = newRequestId("idempotent");
         String requestBody = orderRequest(requestId, 2, "idempotent order test");
@@ -127,6 +168,26 @@ class OrderCreateApiIntegrationTest {
         assertEquals(998, inventory.getAvailableStock());
         assertEquals(2, inventory.getLockedStock());
         assertEquals(1, inventory.getVersion());
+    }
+
+    @Test
+    void createOrderRejectsDuplicatedSkuInSameRequest() throws Exception {
+        String requestId = newRequestId("duplicate-sku");
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType("application/json")
+                        .content(duplicatedSkuOrderRequest(requestId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("duplicated sku in order items"));
+
+        assertEquals(0L, orderMapper.selectCount(new LambdaQueryWrapper<Order>()
+                .eq(Order::getUserId, TestSeedData.USER_ID)
+                .eq(Order::getRequestId, requestId)));
+        Inventory inventory = getSeedInventory();
+        assertEquals(1000, inventory.getAvailableStock());
+        assertEquals(0, inventory.getLockedStock());
     }
 
     @Test
@@ -215,11 +276,58 @@ class OrderCreateApiIntegrationTest {
                   "requestId": "%s",
                   "userId": %d,
                   "addressId": %d,
-                  "skuId": %d,
-                  "quantity": %d%s
+                  "items": [
+                    {
+                      "skuId": %d,
+                      "quantity": %d
+                    }
+                  ]%s
                 }
                 """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID, TestSeedData.SKU_ID,
                 quantity, remarkField);
+    }
+
+    private String multiSkuOrderRequest(String requestId, Integer firstQuantity, Integer secondQuantity, String remark) {
+        return """
+                {
+                  "requestId": "%s",
+                  "userId": %d,
+                  "addressId": %d,
+                  "items": [
+                    {
+                      "skuId": %d,
+                      "quantity": %d
+                    },
+                    {
+                      "skuId": %d,
+                      "quantity": %d
+                    }
+                  ],
+                  "remark": "%s"
+                }
+                """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID,
+                TestSeedData.SKU_ID, firstQuantity, TestSeedData.SKU_ID_2, secondQuantity, remark);
+    }
+
+    private String duplicatedSkuOrderRequest(String requestId) {
+        return """
+                {
+                  "requestId": "%s",
+                  "userId": %d,
+                  "addressId": %d,
+                  "items": [
+                    {
+                      "skuId": %d,
+                      "quantity": 1
+                    },
+                    {
+                      "skuId": %d,
+                      "quantity": 2
+                    }
+                  ]
+                }
+                """.formatted(requestId, TestSeedData.USER_ID, TestSeedData.ADDRESS_ID,
+                TestSeedData.SKU_ID, TestSeedData.SKU_ID);
     }
 
     private String newRequestId(String prefix) {
@@ -241,9 +349,19 @@ class OrderCreateApiIntegrationTest {
         return orderItem;
     }
 
+    private List<OrderItem> getOrderItems(Long orderId) {
+        return orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
+                .eq(OrderItem::getOrderId, orderId)
+                .orderByAsc(OrderItem::getSkuId));
+    }
+
     private Inventory getSeedInventory() {
+        return getInventory(TestSeedData.SKU_ID);
+    }
+
+    private Inventory getInventory(Long skuId) {
         Inventory inventory = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
-                .eq(Inventory::getSkuId, TestSeedData.SKU_ID));
+                .eq(Inventory::getSkuId, skuId));
         assertNotNull(inventory);
         return inventory;
     }

@@ -1,11 +1,14 @@
 package com.tuzki.mall.order.dto;
 
-import jakarta.validation.constraints.Min;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.List;
+
 /**
- * 创建订单请求，承载幂等请求号、用户、收货地址、SKU、购买数量和用户备注。
+ * 创建订单请求，承载幂等请求号、用户、收货地址、订单明细列表和用户备注。
  */
 public class OrderCreateRequest {
 
@@ -18,12 +21,9 @@ public class OrderCreateRequest {
     @NotNull(message = "addressId must not be null")
     private Long addressId;
 
-    @NotNull(message = "skuId must not be null")
-    private Long skuId;
-
-    @NotNull(message = "quantity must not be null")
-    @Min(value = 1, message = "quantity must be greater than 0")
-    private Integer quantity;
+    @Valid
+    @NotEmpty(message = "items must not be empty")
+    private List<OrderCreateItemRequest> items;
 
     private String remark;
 
@@ -51,20 +51,12 @@ public class OrderCreateRequest {
         this.addressId = addressId;
     }
 
-    public Long getSkuId() {
-        return skuId;
+    public List<OrderCreateItemRequest> getItems() {
+        return items;
     }
 
-    public void setSkuId(Long skuId) {
-        this.skuId = skuId;
-    }
-
-    public Integer getQuantity() {
-        return quantity;
-    }
-
-    public void setQuantity(Integer quantity) {
-        this.quantity = quantity;
+    public void setItems(List<OrderCreateItemRequest> items) {
+        this.items = items;
     }
 
     public String getRemark() {

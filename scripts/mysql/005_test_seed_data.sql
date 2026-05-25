@@ -58,8 +58,29 @@ ON DUPLICATE KEY UPDATE
     status = VALUES(status),
     deleted = VALUES(deleted);
 
+INSERT INTO pms_sku (id, product_id, sku_code, sku_name, spec_data, price, original_price, main_image_url, status, deleted)
+VALUES (900002, 900001, 'SEED-SKU-002', 'Seed Test SKU 2', JSON_OBJECT('color', 'white'), 59.00, 79.00,
+        'https://example.com/seed-sku-2.png', 1, 0)
+ON DUPLICATE KEY UPDATE
+    product_id = VALUES(product_id),
+    sku_name = VALUES(sku_name),
+    spec_data = VALUES(spec_data),
+    price = VALUES(price),
+    original_price = VALUES(original_price),
+    main_image_url = VALUES(main_image_url),
+    status = VALUES(status),
+    deleted = VALUES(deleted);
+
 INSERT INTO ims_inventory (id, sku_id, available_stock, locked_stock, version, deleted)
 VALUES (900001, 900001, 1000, 0, 0, 0)
+ON DUPLICATE KEY UPDATE
+    available_stock = VALUES(available_stock),
+    locked_stock = VALUES(locked_stock),
+    version = VALUES(version),
+    deleted = VALUES(deleted);
+
+INSERT INTO ims_inventory (id, sku_id, available_stock, locked_stock, version, deleted)
+VALUES (900002, 900002, 1000, 0, 0, 0)
 ON DUPLICATE KEY UPDATE
     available_stock = VALUES(available_stock),
     locked_stock = VALUES(locked_stock),

@@ -3,6 +3,7 @@ package com.tuzki.mall.order.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.inventory.service.InventoryService;
+import com.tuzki.mall.order.dto.OrderCreateItemRequest;
 import com.tuzki.mall.order.dto.OrderCreateRequest;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
@@ -28,7 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -83,11 +87,14 @@ public class OrderServiceImpl implements OrderService {
 
         User user = getActiveUser(request.getUserId());
         Address address = getActiveAddress(user.getId(), request.getAddressId());
-        Sku sku = getActiveSku(request.getSkuId());
-        Product product = getActiveProduct(sku.getProductId());
+        List<OrderItemContext> itemContexts = buildItemContexts(request.getItems());
+        BigDecimal totalAmount = calculateTotalAmount(itemContexts);
 
-        BigDecimal totalAmount = sku.getPrice().multiply(BigDecimal.valueOf(request.getQuantity()));
-        inventoryService.lockStock(sku.getId(), request.getQuantity());
+        List<OrderItemContext> lockedItemContexts = new ArrayList<>();
+        for (OrderItemContext itemContext : itemContexts) {
+            inventoryService.lockStock(itemContext.sku().getId(), itemContext.requestItem().getQuantity());
+            lockedItemContexts.add(itemContext);
+        }
 
         Order order = buildOrder(request, address, totalAmount, generateOrderNo());
         try {
@@ -95,15 +102,17 @@ public class OrderServiceImpl implements OrderService {
         } catch (DuplicateKeyException exception) {
             Order concurrentExistingOrder = getExistingOrderByRequestId(request.getUserId(), request.getRequestId());
             if (concurrentExistingOrder != null) {
-                // 并发重复请求可能已经由另一个线程建单成功，本线程释放刚锁定的库存后返回已有订单。
-                inventoryService.releaseStock(sku.getId(), request.getQuantity());
+                // 并发重复请求可能已经由另一个线程建单成功，本线程释放刚锁定的多条库存后返回已有订单。
+                releaseLockedStock(lockedItemContexts);
                 return toCreateVO(concurrentExistingOrder);
             }
             throw exception;
         }
 
-        OrderItem orderItem = buildOrderItem(request, sku, product, order);
-        orderItemMapper.insert(orderItem);
+        for (OrderItemContext itemContext : itemContexts) {
+            OrderItem orderItem = buildOrderItem(itemContext.requestItem(), itemContext.sku(), itemContext.product(), order);
+            orderItemMapper.insert(orderItem);
+        }
 
         return toCreateVO(order);
     }
@@ -199,6 +208,36 @@ public class OrderServiceImpl implements OrderService {
                 .eq(OrderItem::getDeleted, NOT_DELETED));
     }
 
+    private List<OrderItemContext> buildItemContexts(List<OrderCreateItemRequest> requestItems) {
+        Set<Long> skuIds = new HashSet<>();
+        List<OrderItemContext> itemContexts = new ArrayList<>();
+        for (OrderCreateItemRequest requestItem : requestItems) {
+            if (!skuIds.add(requestItem.getSkuId())) {
+                throw new BusinessException(400, "duplicated sku in order items");
+            }
+            Sku sku = getActiveSku(requestItem.getSkuId());
+            Product product = getActiveProduct(sku.getProductId());
+            itemContexts.add(new OrderItemContext(requestItem, sku, product));
+        }
+        return itemContexts;
+    }
+
+    private BigDecimal calculateTotalAmount(List<OrderItemContext> itemContexts) {
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        for (OrderItemContext itemContext : itemContexts) {
+            BigDecimal itemAmount = itemContext.sku().getPrice()
+                    .multiply(BigDecimal.valueOf(itemContext.requestItem().getQuantity()));
+            totalAmount = totalAmount.add(itemAmount);
+        }
+        return totalAmount;
+    }
+
+    private void releaseLockedStock(List<OrderItemContext> lockedItemContexts) {
+        for (OrderItemContext itemContext : lockedItemContexts) {
+            inventoryService.releaseStock(itemContext.sku().getId(), itemContext.requestItem().getQuantity());
+        }
+    }
+
     private Order buildOrder(OrderCreateRequest request, Address address, BigDecimal totalAmount, String orderNo) {
         Order order = new Order();
         order.setOrderNo(orderNo);
@@ -219,8 +258,8 @@ public class OrderServiceImpl implements OrderService {
         return order;
     }
 
-    private OrderItem buildOrderItem(OrderCreateRequest request, Sku sku, Product product, Order order) {
-        BigDecimal totalAmount = sku.getPrice().multiply(BigDecimal.valueOf(request.getQuantity()));
+    private OrderItem buildOrderItem(OrderCreateItemRequest requestItem, Sku sku, Product product, Order order) {
+        BigDecimal totalAmount = sku.getPrice().multiply(BigDecimal.valueOf(requestItem.getQuantity()));
         OrderItem orderItem = new OrderItem();
         orderItem.setOrderId(order.getId());
         orderItem.setOrderNo(order.getOrderNo());
@@ -232,7 +271,7 @@ public class OrderServiceImpl implements OrderService {
         orderItem.setSpecData(sku.getSpecData());
         orderItem.setMainImageUrl(resolveMainImageUrl(sku, product));
         orderItem.setUnitPrice(sku.getPrice());
-        orderItem.setQuantity(request.getQuantity());
+        orderItem.setQuantity(requestItem.getQuantity());
         orderItem.setTotalAmount(totalAmount);
         orderItem.setDeleted(NOT_DELETED);
         return orderItem;
@@ -297,5 +336,8 @@ public class OrderServiceImpl implements OrderService {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String randomSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
         return "O" + timestamp + randomSuffix;
+    }
+
+    private record OrderItemContext(OrderCreateItemRequest requestItem, Sku sku, Product product) {
     }
 }

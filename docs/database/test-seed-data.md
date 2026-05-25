@@ -8,7 +8,7 @@
 scripts/mysql/005_test_seed_data.sql
 ```
 
-该脚本可以重复执行，适合本地开发和接口测试。
+该脚本可以重复执行，适合本地开发、Swagger 手动测试和接口集成测试。
 
 ## 二、固定数据
 
@@ -20,10 +20,13 @@ scripts/mysql/005_test_seed_data.sql
 | 测试分类 ID | `900001` |
 | 测试商品 ID | `900001` |
 | 测试商品编码 | `SEED-P-001` |
-| 测试 SKU ID | `900001` |
-| 测试 SKU 编码 | `SEED-SKU-001` |
-| 测试 SKU 单价 | `199.00` |
-| 测试库存 | `available_stock = 1000, locked_stock = 0` |
+| 测试 SKU 1 ID | `900001` |
+| 测试 SKU 1 编码 | `SEED-SKU-001` |
+| 测试 SKU 1 单价 | `199.00` |
+| 测试 SKU 2 ID | `900002` |
+| 测试 SKU 2 编码 | `SEED-SKU-002` |
+| 测试 SKU 2 单价 | `59.00` |
+| 测试库存 | 每个固定 SKU 都是 `available_stock = 1000, locked_stock = 0` |
 
 测试代码中的 `TestSeedData` 常量类和该脚本保持一致。
 
@@ -41,4 +44,4 @@ mysql -uroot -p09ijklmn mall_lite --execute="source scripts/mysql/005_test_seed_
 
 1. 集成测试使用 `@Transactional`，测试中的库存锁定、订单创建和支付变更会在测试结束后回滚。
 2. 脚本会把固定 SKU 的库存重置为 `1000/0/0`，如果你在 Swagger 手动测试后想恢复基础数据，可以重新执行该脚本。
-3. 固定 ID 使用 `900001`，避免和普通自增测试数据混在一起。
+3. 固定 ID 使用 `900001`、`900002`，避免和普通自增测试数据混在一起。

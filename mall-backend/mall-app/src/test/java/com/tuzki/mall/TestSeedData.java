@@ -15,11 +15,17 @@ public final class TestSeedData {
 
     public static final Long SKU_ID = 900001L;
 
+    public static final Long SKU_ID_2 = 900002L;
+
     public static final String SKU_CODE = "SEED-SKU-001";
+
+    public static final String SKU_CODE_2 = "SEED-SKU-002";
 
     public static final String PRODUCT_NAME = "Seed Test Product";
 
     public static final String SKU_NAME = "Seed Test SKU";
+
+    public static final String SKU_NAME_2 = "Seed Test SKU 2";
 
     public static final String RECEIVER_NAME = "Seed Receiver";
 

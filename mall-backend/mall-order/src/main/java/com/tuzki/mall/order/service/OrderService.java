@@ -10,9 +10,9 @@ import com.tuzki.mall.order.vo.OrderDetailVO;
 public interface OrderService {
 
     /**
-     * 创建订单并锁定对应 SKU 库存。
+     * 创建订单并锁定订单中每个 SKU 对应的库存。
      *
-     * @param request 创建订单请求，包含用户 ID、收货地址 ID、SKU ID、购买数量和备注
+     * @param request 创建订单请求，包含用户 ID、收货地址 ID、幂等请求号、订单明细列表和备注
      * @return 创建后的订单核心信息
      */
     OrderCreateVO createOrder(OrderCreateRequest request);
@@ -26,7 +26,7 @@ public interface OrderService {
     OrderDetailVO getOrderById(Long orderId);
 
     /**
-     * 取消待支付订单，并释放订单中已锁定的库存。
+     * 取消待支付订单，并释放订单中已锁定的所有 SKU 库存。
      *
      * @param orderId 订单 ID
      */
