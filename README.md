@@ -87,7 +87,7 @@ mall-lite/
 
 | 文档 | 路径 |
 | --- | --- |
-| 技术选型说明 | `docs/architecture/technology-stack.md` |
+| 技术选型说明 | `docs/architecture/技术选型说明.md` |
 | 数据库设计 | `docs/database/` |
 | 学习笔记 | `docs/notes/` |
 
