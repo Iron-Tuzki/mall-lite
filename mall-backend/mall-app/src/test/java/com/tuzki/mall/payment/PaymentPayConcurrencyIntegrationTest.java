@@ -12,6 +12,7 @@ import com.tuzki.mall.order.entity.OrderRequest;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.mapper.OrderRequestMapper;
+import com.tuzki.mall.order.message.OrderTimeoutMessageSender;
 import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.payment.dto.PaymentCallbackRequest;
@@ -23,6 +24,7 @@ import com.tuzki.mall.payment.vo.PaymentPayVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -60,6 +62,9 @@ class PaymentPayConcurrencyIntegrationTest {
 
     @Autowired
     private PaymentMapper paymentMapper;
+
+    @MockitoBean
+    private OrderTimeoutMessageSender orderTimeoutMessageSender;
 
     @Test
     void concurrentPayOrderOnlyCreatesOnePendingPayment() throws Exception {

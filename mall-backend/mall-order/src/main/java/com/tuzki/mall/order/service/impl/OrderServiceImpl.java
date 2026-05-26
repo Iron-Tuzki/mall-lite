@@ -13,6 +13,8 @@ import com.tuzki.mall.order.enums.OrderStatus;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.mapper.OrderRequestMapper;
+import com.tuzki.mall.order.message.OrderTimeoutMessage;
+import com.tuzki.mall.order.message.OrderTimeoutMessageSender;
 import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.order.vo.OrderDetailVO;
@@ -26,9 +28,13 @@ import com.tuzki.mall.user.entity.Address;
 import com.tuzki.mall.user.entity.User;
 import com.tuzki.mall.user.mapper.AddressMapper;
 import com.tuzki.mall.user.mapper.UserMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -45,6 +51,8 @@ import java.util.UUID;
  */
 @Service
 public class OrderServiceImpl implements OrderService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(OrderServiceImpl.class);
 
     private static final int ACTIVE_STATUS = 1;
 
@@ -71,6 +79,8 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemMapper orderItemMapper;
 
     private final OrderRequestMapper orderRequestMapper;
+    
+    private final OrderTimeoutMessageSender orderTimeoutMessageSender;
 
     public OrderServiceImpl(UserMapper userMapper,
                             AddressMapper addressMapper,
@@ -79,7 +89,8 @@ public class OrderServiceImpl implements OrderService {
                             InventoryService inventoryService,
                             OrderMapper orderMapper,
                             OrderItemMapper orderItemMapper,
-                            OrderRequestMapper orderRequestMapper) {
+                            OrderRequestMapper orderRequestMapper,
+                            OrderTimeoutMessageSender orderTimeoutMessageSender) {
         this.userMapper = userMapper;
         this.addressMapper = addressMapper;
         this.skuMapper = skuMapper;
@@ -88,6 +99,7 @@ public class OrderServiceImpl implements OrderService {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.orderRequestMapper = orderRequestMapper;
+        this.orderTimeoutMessageSender = orderTimeoutMessageSender;
     }
 
     @Override
@@ -130,6 +142,7 @@ public class OrderServiceImpl implements OrderService {
             orderItemMapper.insert(orderItem);
         }
         markOrderRequestSuccess(userId, request.getRequestId(), order.getId());
+        registerOrderTimeoutMessageAfterCommit(order);
 
         return toCreateVO(order);
     }
@@ -275,6 +288,29 @@ public class OrderServiceImpl implements OrderService {
         if (affectedRows != 1) {
             throw new BusinessException(500, "mark order request success failed");
         }
+    }
+
+    private void registerOrderTimeoutMessageAfterCommit(Order order) {
+        OrderTimeoutMessage message = buildOrderTimeoutMessage(order);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    orderTimeoutMessageSender.send(message);
+                } catch (RuntimeException exception) {
+                    LOGGER.warn("send order timeout message failed, orderId={}", order.getId(), exception);
+                }
+            }
+        });
+    }
+
+    private OrderTimeoutMessage buildOrderTimeoutMessage(Order order) {
+        OrderTimeoutMessage message = new OrderTimeoutMessage();
+        message.setOrderId(order.getId());
+        message.setOrderNo(order.getOrderNo());
+        message.setUserId(order.getUserId());
+        message.setCreateTime(order.getCreateTime() == null ? LocalDateTime.now() : order.getCreateTime());
+        return message;
     }
 
     private List<OrderItem> getActiveOrderItems(Long orderId) {

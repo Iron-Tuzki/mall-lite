@@ -12,11 +12,14 @@ import com.tuzki.mall.order.entity.OrderRequest;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.mapper.OrderRequestMapper;
+import com.tuzki.mall.order.message.OrderTimeoutMessage;
+import com.tuzki.mall.order.message.OrderTimeoutMessageSender;
 import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -26,6 +29,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * 下单幂等并发集成测试，验证重复 requestId 会先被订单请求表拦截，不会重复进入锁库存流程。
@@ -47,6 +53,9 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
 
     @Autowired
     private OrderRequestMapper orderRequestMapper;
+
+    @MockitoBean
+    private OrderTimeoutMessageSender orderTimeoutMessageSender;
 
     @Test
     void concurrentSameRequestIdOnlyLocksStockOnce() throws Exception {
@@ -76,6 +85,7 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
                 assertEquals(998, inventory.getAvailableStock());
                 assertEquals(2, inventory.getLockedStock());
                 assertEquals(1, inventory.getVersion());
+                verify(orderTimeoutMessageSender, times(1)).send(any(OrderTimeoutMessage.class));
             } finally {
                 executorService.shutdownNow();
             }
