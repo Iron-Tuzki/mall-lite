@@ -130,6 +130,36 @@ class PaymentApiIntegrationTest {
     }
 
     @Test
+    void payOrderCanCreateNewPendingPaymentAfterPreviousPaymentFailed() throws Exception {
+        Order order = createOrder(1, "retry payment after failed test");
+
+        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        Payment firstPayment = getPayment(order.getId());
+
+        mockMvc.perform(failedCallback(firstPayment.getPaymentNo()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.paymentStatus").value(30));
+
+        mockMvc.perform(post("/api/orders/{orderId}/pay", order.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.orderStatus").value(10))
+                .andExpect(jsonPath("$.data.paymentStatus").value(10));
+
+        Long paymentCount = paymentMapper.selectCount(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, order.getId()));
+        Long pendingPaymentCount = paymentMapper.selectCount(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, order.getId())
+                .eq(Payment::getStatus, 10));
+        assertEquals(2L, paymentCount);
+        assertEquals(1L, pendingPaymentCount);
+    }
+
+    @Test
     void payOrderRejectsAlreadyPaidOrder() throws Exception {
         Order order = createOrder(1, "double payment order test");
 

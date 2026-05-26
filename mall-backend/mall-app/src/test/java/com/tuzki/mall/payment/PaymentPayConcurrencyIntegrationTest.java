@@ -1,4 +1,4 @@
-package com.tuzki.mall.order;
+package com.tuzki.mall.payment;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tuzki.mall.TestSeedData;
@@ -14,6 +14,10 @@ import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.mapper.OrderRequestMapper;
 import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
+import com.tuzki.mall.payment.entity.Payment;
+import com.tuzki.mall.payment.mapper.PaymentMapper;
+import com.tuzki.mall.payment.service.PaymentService;
+import com.tuzki.mall.payment.vo.PaymentPayVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,13 +32,16 @@ import java.util.concurrent.Future;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * 下单幂等并发集成测试，验证重复 requestId 会先被订单请求表拦截，不会重复进入锁库存流程。
+ * 发起支付并发幂等集成测试，验证同一订单并发发起支付时只会创建一条待支付流水。
  */
 @SpringBootTest
-class OrderCreateIdempotencyConcurrencyIntegrationTest {
+class PaymentPayConcurrencyIntegrationTest {
 
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private PaymentService paymentService;
 
     @Autowired
     private InventoryMapper inventoryMapper;
@@ -48,47 +55,43 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
     @Autowired
     private OrderRequestMapper orderRequestMapper;
 
+    @Autowired
+    private PaymentMapper paymentMapper;
+
     @Test
-    void concurrentSameRequestIdOnlyLocksStockOnce() throws Exception {
-        String requestId = "REQ-concurrent-" + System.nanoTime();
+    void concurrentPayOrderOnlyCreatesOnePendingPayment() throws Exception {
+        String requestId = "REQ-pay-concurrent-" + System.nanoTime();
         resetSeedInventory(1000, 0);
+        OrderCreateVO orderCreateVO = orderService.createOrder(TestSeedData.USER_ID, buildCreateRequest(requestId));
         try {
             CountDownLatch startLatch = new CountDownLatch(1);
             ExecutorService executorService = Executors.newFixedThreadPool(2);
             try {
-                Future<OrderCreateVO> firstFuture = executorService.submit(createOrderTask(startLatch, requestId));
-                Future<OrderCreateVO> secondFuture = executorService.submit(createOrderTask(startLatch, requestId));
+                Future<PaymentPayVO> firstFuture = executorService.submit(payOrderTask(startLatch, orderCreateVO.getOrderId()));
+                Future<PaymentPayVO> secondFuture = executorService.submit(payOrderTask(startLatch, orderCreateVO.getOrderId()));
 
                 startLatch.countDown();
 
-                OrderCreateVO firstResult = firstFuture.get();
-                OrderCreateVO secondResult = secondFuture.get();
+                PaymentPayVO firstResult = firstFuture.get();
+                PaymentPayVO secondResult = secondFuture.get();
 
-                assertEquals(firstResult.getOrderId(), secondResult.getOrderId());
-                assertEquals(1L, orderMapper.selectCount(new LambdaQueryWrapper<Order>()
-                        .eq(Order::getUserId, TestSeedData.USER_ID)
-                        .eq(Order::getRequestId, requestId)));
-                assertEquals(1L, orderRequestMapper.selectCount(new LambdaQueryWrapper<OrderRequest>()
-                        .eq(OrderRequest::getUserId, TestSeedData.USER_ID)
-                        .eq(OrderRequest::getRequestId, requestId)));
-
-                Inventory inventory = getSeedInventory();
-                assertEquals(998, inventory.getAvailableStock());
-                assertEquals(2, inventory.getLockedStock());
-                assertEquals(1, inventory.getVersion());
+                assertEquals(firstResult.getPaymentNo(), secondResult.getPaymentNo());
+                assertEquals(1L, paymentMapper.selectCount(new LambdaQueryWrapper<Payment>()
+                        .eq(Payment::getOrderId, orderCreateVO.getOrderId())));
             } finally {
                 executorService.shutdownNow();
             }
         } finally {
-            cleanOrderData(requestId);
+            cleanPaymentData(orderCreateVO.getOrderId());
+            cleanOrderData(requestId, orderCreateVO.getOrderId());
             resetSeedInventory(1000, 0);
         }
     }
 
-    private Callable<OrderCreateVO> createOrderTask(CountDownLatch startLatch, String requestId) {
+    private Callable<PaymentPayVO> payOrderTask(CountDownLatch startLatch, Long orderId) {
         return () -> {
-            startLatch.await(); // 阻塞等待主线程唤醒后一起跑，模拟并发
-            return orderService.createOrder(TestSeedData.USER_ID, buildCreateRequest(requestId));
+            startLatch.await();
+            return paymentService.payOrder(orderId);
         };
     }
 
@@ -101,14 +104,13 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
         request.setRequestId(requestId);
         request.setAddressId(TestSeedData.ADDRESS_ID);
         request.setItems(List.of(itemRequest));
-        request.setRemark("concurrent idempotency test");
+        request.setRemark("concurrent payment test");
         return request;
     }
 
     private Inventory getSeedInventory() {
-        Inventory inventory = inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
+        return inventoryMapper.selectOne(new LambdaQueryWrapper<Inventory>()
                 .eq(Inventory::getSkuId, TestSeedData.SKU_ID));
-        return inventory;
     }
 
     private void resetSeedInventory(Integer availableStock, Integer lockedStock) {
@@ -119,15 +121,15 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
         inventoryMapper.updateById(inventory);
     }
 
-    private void cleanOrderData(String requestId) {
-        Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
-                .eq(Order::getUserId, TestSeedData.USER_ID)
-                .eq(Order::getRequestId, requestId));
-        if (order != null) {
-            orderItemMapper.delete(new LambdaQueryWrapper<OrderItem>()
-                    .eq(OrderItem::getOrderId, order.getId()));
-            orderMapper.deleteById(order.getId());
-        }
+    private void cleanPaymentData(Long orderId) {
+        paymentMapper.delete(new LambdaQueryWrapper<Payment>()
+                .eq(Payment::getOrderId, orderId));
+    }
+
+    private void cleanOrderData(String requestId, Long orderId) {
+        orderItemMapper.delete(new LambdaQueryWrapper<OrderItem>()
+                .eq(OrderItem::getOrderId, orderId));
+        orderMapper.deleteById(orderId);
         orderRequestMapper.delete(new LambdaQueryWrapper<OrderRequest>()
                 .eq(OrderRequest::getUserId, TestSeedData.USER_ID)
                 .eq(OrderRequest::getRequestId, requestId));

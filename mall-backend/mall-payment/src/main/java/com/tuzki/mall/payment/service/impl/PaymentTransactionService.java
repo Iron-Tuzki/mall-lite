@@ -14,6 +14,7 @@ import com.tuzki.mall.payment.enums.PayChannel;
 import com.tuzki.mall.payment.enums.PaymentStatus;
 import com.tuzki.mall.payment.mapper.PaymentMapper;
 import com.tuzki.mall.payment.vo.PaymentPayVO;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,17 +51,20 @@ public class PaymentTransactionService {
 
     @Transactional(rollbackFor = Exception.class)
     public PaymentPayVO createPendingPayment(Long orderId) {
-        Order order = getActiveOrder(orderId);
+        Order order = getActiveOrderForUpdate(orderId);
         OrderStatus.fromCode(order.getStatus()).checkCanPay();
 
-        Payment existingPendingPayment = getPendingPayment(order.getId());
-        if (existingPendingPayment != null) {
-            return toPaymentPayVO(existingPendingPayment, order);
-        }
-
         Payment payment = buildPendingPayment(order);
-        paymentMapper.insert(payment);
-        return toPaymentPayVO(payment, order);
+        try {
+            paymentMapper.insert(payment);
+            return toPaymentPayVO(payment, order);
+        } catch (DuplicateKeyException exception) {
+            Payment existingPendingPayment = getPendingPayment(order.getId());
+            if (existingPendingPayment != null) {
+                return toPaymentPayVO(existingPendingPayment, order);
+            }
+            throw exception;
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -114,6 +118,14 @@ public class PaymentTransactionService {
         Order order = orderMapper.selectOne(new LambdaQueryWrapper<Order>()
                 .eq(Order::getId, orderId)
                 .eq(Order::getDeleted, NOT_DELETED));
+        if (order == null) {
+            throw new BusinessException(404, "order not found");
+        }
+        return order;
+    }
+
+    private Order getActiveOrderForUpdate(Long orderId) {
+        Order order = orderMapper.selectByIdForUpdate(orderId);
         if (order == null) {
             throw new BusinessException(404, "order not found");
         }

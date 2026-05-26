@@ -111,6 +111,9 @@ CREATE TABLE pms_payment
     pay_channel      TINYINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '支付渠道：1模拟支付',
     pay_amount       DECIMAL(10, 2)  NOT NULL COMMENT '支付金额',
     status           TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT '支付状态：10待支付，20支付成功，30支付失败，40已关闭',
+    pending_order_id BIGINT UNSIGNED GENERATED ALWAYS AS (
+        CASE WHEN status = 10 AND deleted = 0 THEN order_id ELSE NULL END
+    ) STORED COMMENT '待支付订单ID生成列，用于限制同一订单同一渠道只有一条待支付流水',
     pay_time         DATETIME        NULL COMMENT '支付成功时间',
     callback_content TEXT            NULL COMMENT '支付回调内容',
     create_time      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -118,6 +121,7 @@ CREATE TABLE pms_payment
     deleted          TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0未删除，1已删除',
     PRIMARY KEY (id),
     UNIQUE KEY uk_payment_no (payment_no),
+    UNIQUE KEY uk_pending_order_channel (pending_order_id, pay_channel),
     KEY idx_order_no (order_no),
     KEY idx_user_id (user_id)
 ) ENGINE = InnoDB

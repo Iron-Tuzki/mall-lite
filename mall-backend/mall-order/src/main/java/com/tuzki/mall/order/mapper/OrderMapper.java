@@ -52,6 +52,41 @@ public interface OrderMapper extends BaseMapper<Order> {
             """)
     int markCancelIfPending(@Param("orderId") Long orderId);
 
+    /**
+     * 使用数据库行锁查询指定订单。
+     *
+     * @param orderId 订单 ID，用于定位需要加锁的订单主记录
+     * @return 未删除的订单主记录；如果订单不存在或已删除，返回 null
+     */
+    @Select("""
+            SELECT id,
+                   order_no,
+                   request_id,
+                   user_id,
+                   total_amount,
+                   pay_amount,
+                   freight_amount,
+                   status,
+                   receiver_name,
+                   receiver_phone,
+                   receiver_province,
+                   receiver_city,
+                   receiver_district,
+                   receiver_detail_address,
+                   remark,
+                   pay_time,
+                   cancel_time,
+                   finish_time,
+                   create_time,
+                   update_time,
+                   deleted
+            FROM oms_order
+            WHERE id = #{orderId}
+              AND deleted = 0
+            FOR UPDATE
+            """)
+    Order selectByIdForUpdate(@Param("orderId") Long orderId);
+
     @Select("""
                 select id as orderId,
                              order_no,
