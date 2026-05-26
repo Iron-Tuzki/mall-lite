@@ -69,25 +69,32 @@ public class PaymentTransactionService {
 
     @Transactional(rollbackFor = Exception.class)
     public PaymentPayVO handleCallback(String paymentNo, MockPaymentResult mockResult) {
-        int affectedRows = markPaymentTerminalIfPending(paymentNo, mockResult);
         Payment payment = getActivePayment(paymentNo);
-        Order order = getActiveOrder(payment.getOrderId());
+        Order order = getActiveOrderForUpdate(payment.getOrderId());
+        LocalDateTime now = LocalDateTime.now();
+        int affectedRows = markPaymentTerminalIfPending(paymentNo, now, mockResult);
 
-        // affectedRows 为 0 表示支付流水已被其他回调处理，直接返回当前状态，避免重复扣库存。
+        // affectedRows 为 0 表示支付流水已被其他回调处理，使用当前读读取最新数据并返回，避免重复扣库存。
         if (affectedRows == 0) {
-            return toPaymentPayVO(payment, order);
+            Payment currentPayment = getActivePaymentForUpdate(paymentNo);
+            return toPaymentPayVO(currentPayment, order);
         }
 
+        payment.setStatus(mockResult == MockPaymentResult.SUCCESS
+                ? PaymentStatus.SUCCESS.getCode()
+                : PaymentStatus.FAILED.getCode());
+
         if (mockResult == MockPaymentResult.SUCCESS) {
+            payment.setPayTime(now);
             confirmPaymentSuccess(payment, order);
         }
         return toPaymentPayVO(payment, order);
     }
 
-    private int markPaymentTerminalIfPending(String paymentNo, MockPaymentResult mockResult) {
+    private int markPaymentTerminalIfPending(String paymentNo, LocalDateTime now, MockPaymentResult mockResult) {
         String callbackContent = buildCallbackContent(mockResult);
         if (mockResult == MockPaymentResult.SUCCESS) {
-            return paymentMapper.markSuccessIfPending(paymentNo, LocalDateTime.now(), callbackContent);
+            return paymentMapper.markSuccessIfPending(paymentNo, now, callbackContent);
         }
         return paymentMapper.markFailedIfPending(paymentNo, callbackContent);
     }
@@ -136,6 +143,14 @@ public class PaymentTransactionService {
         Payment payment = paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
                 .eq(Payment::getPaymentNo, paymentNo)
                 .eq(Payment::getDeleted, NOT_DELETED));
+        if (payment == null) {
+            throw new BusinessException(404, "payment not found");
+        }
+        return payment;
+    }
+
+    private Payment getActivePaymentForUpdate(String paymentNo) {
+        Payment payment = paymentMapper.selectByPaymentNoForUpdate(paymentNo);
         if (payment == null) {
             throw new BusinessException(404, "payment not found");
         }
