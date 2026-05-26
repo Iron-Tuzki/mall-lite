@@ -35,3 +35,14 @@ springdoc:
     operations-sorter: method
   api-docs:
     path: /v3/api-docs
+
+mall:
+  order:
+    rabbit:
+      delay-exchange: mall.order.delay.exchange
+      delay-queue: mall.order.delay.queue
+      delay-routing-key: mall.order.delay.routing-key
+      cancel-exchange: mall.order.cancel.exchange
+      cancel-queue: mall.order.cancel.queue
+      cancel-routing-key: mall.order.cancel.routing-key
+      timeout-minutes: 30
