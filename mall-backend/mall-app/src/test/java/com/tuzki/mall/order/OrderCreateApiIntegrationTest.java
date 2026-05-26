@@ -6,9 +6,12 @@ import com.tuzki.mall.inventory.entity.Inventory;
 import com.tuzki.mall.inventory.mapper.InventoryMapper;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
+import com.tuzki.mall.order.entity.OrderRequest;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
+import com.tuzki.mall.order.mapper.OrderRequestMapper;
 import com.tuzki.mall.user.service.LoginSessionService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -47,7 +50,16 @@ class OrderCreateApiIntegrationTest {
     private OrderItemMapper orderItemMapper;
 
     @Autowired
+    private OrderRequestMapper orderRequestMapper;
+
+    @Autowired
     private LoginSessionService loginSessionService;
+
+    @BeforeEach
+    void setUp() {
+        resetInventory(TestSeedData.SKU_ID, 1000, 0);
+        resetInventory(TestSeedData.SKU_ID_2, 1000, 0);
+    }
 
     @Test
     void createOrderLocksStockAndCreatesOrderWithItemSnapshot() throws Exception {
@@ -169,6 +181,9 @@ class OrderCreateApiIntegrationTest {
         assertEquals(1L, orderMapper.selectCount(new LambdaQueryWrapper<Order>()
                 .eq(Order::getUserId, TestSeedData.USER_ID)
                 .eq(Order::getRequestId, requestId)));
+        assertEquals(1L, orderRequestMapper.selectCount(new LambdaQueryWrapper<OrderRequest>()
+                .eq(OrderRequest::getUserId, TestSeedData.USER_ID)
+                .eq(OrderRequest::getRequestId, requestId)));
         assertEquals(1L, orderItemMapper.selectCount(new LambdaQueryWrapper<OrderItem>()
                 .eq(OrderItem::getOrderId, firstOrder.getId())));
 
@@ -405,7 +420,11 @@ class OrderCreateApiIntegrationTest {
     }
 
     private void resetSeedInventory(Integer availableStock, Integer lockedStock) {
-        Inventory inventory = getSeedInventory();
+        resetInventory(TestSeedData.SKU_ID, availableStock, lockedStock);
+    }
+
+    private void resetInventory(Long skuId, Integer availableStock, Integer lockedStock) {
+        Inventory inventory = getInventory(skuId);
         inventory.setAvailableStock(availableStock);
         inventory.setLockedStock(lockedStock);
         inventory.setVersion(0);

@@ -7,9 +7,12 @@ import com.tuzki.mall.order.dto.OrderCreateItemRequest;
 import com.tuzki.mall.order.dto.OrderCreateRequest;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
+import com.tuzki.mall.order.entity.OrderRequest;
+import com.tuzki.mall.order.enums.OrderRequestStatus;
 import com.tuzki.mall.order.enums.OrderStatus;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
+import com.tuzki.mall.order.mapper.OrderRequestMapper;
 import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.order.vo.OrderDetailVO;
@@ -25,6 +28,7 @@ import com.tuzki.mall.user.mapper.AddressMapper;
 import com.tuzki.mall.user.mapper.UserMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -48,6 +52,10 @@ public class OrderServiceImpl implements OrderService {
 
     private static final BigDecimal ZERO_FREIGHT_AMOUNT = BigDecimal.ZERO;
 
+    private static final int DUPLICATED_REQUEST_RETRY_TIMES = 20;
+
+    private static final long DUPLICATED_REQUEST_RETRY_INTERVAL_MILLIS = 100L;
+
     private final UserMapper userMapper;
 
     private final AddressMapper addressMapper;
@@ -62,13 +70,16 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderItemMapper orderItemMapper;
 
+    private final OrderRequestMapper orderRequestMapper;
+
     public OrderServiceImpl(UserMapper userMapper,
                             AddressMapper addressMapper,
                             SkuMapper skuMapper,
                             ProductMapper productMapper,
                             InventoryService inventoryService,
                             OrderMapper orderMapper,
-                            OrderItemMapper orderItemMapper) {
+                            OrderItemMapper orderItemMapper,
+                            OrderRequestMapper orderRequestMapper) {
         this.userMapper = userMapper;
         this.addressMapper = addressMapper;
         this.skuMapper = skuMapper;
@@ -76,14 +87,18 @@ public class OrderServiceImpl implements OrderService {
         this.inventoryService = inventoryService;
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
+        this.orderRequestMapper = orderRequestMapper;
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public OrderCreateVO createOrder(Long userId, OrderCreateRequest request) {
         Order existingOrder = getExistingOrderByRequestId(userId, request.getRequestId());
         if (existingOrder != null) {
             return toCreateVO(existingOrder);
+        }
+        if (!claimOrderRequest(userId, request.getRequestId())) {
+            return toCreateVO(getExistingOrderAfterDuplicatedRequest(userId, request.getRequestId()));
         }
 
         User user = getActiveUser(userId);
@@ -103,7 +118,7 @@ public class OrderServiceImpl implements OrderService {
         } catch (DuplicateKeyException exception) {
             Order concurrentExistingOrder = getExistingOrderByRequestId(userId, request.getRequestId());
             if (concurrentExistingOrder != null) {
-                // 并发重复请求可能已经由另一个线程建单成功，本线程释放刚锁定的多条库存后返回已有订单。
+                // 兼容历史数据或极端并发场景：订单唯一键仍作为最终兜底，避免重复订单落库。
                 releaseLockedStock(lockedItemContexts);
                 return toCreateVO(concurrentExistingOrder);
             }
@@ -114,6 +129,7 @@ public class OrderServiceImpl implements OrderService {
             OrderItem orderItem = buildOrderItem(itemContext.requestItem(), itemContext.sku(), itemContext.product(), order);
             orderItemMapper.insert(orderItem);
         }
+        markOrderRequestSuccess(userId, request.getRequestId(), order.getId());
 
         return toCreateVO(order);
     }
@@ -217,6 +233,48 @@ public class OrderServiceImpl implements OrderService {
                 .eq(Order::getRequestId, requestId)
                 .eq(Order::getDeleted, NOT_DELETED)
                 .last("limit 1"));
+    }
+
+    private boolean claimOrderRequest(Long userId, String requestId) {
+        OrderRequest orderRequest = new OrderRequest();
+        orderRequest.setUserId(userId);
+        orderRequest.setRequestId(requestId);
+        orderRequest.setStatus(OrderRequestStatus.PROCESSING.getCode());
+        orderRequest.setDeleted(NOT_DELETED);
+        try {
+            orderRequestMapper.insert(orderRequest);
+            return true;
+        } catch (DuplicateKeyException exception) {
+            return false;
+        }
+    }
+
+    private Order getExistingOrderAfterDuplicatedRequest(Long userId, String requestId) {
+        for (int retry = 0; retry < DUPLICATED_REQUEST_RETRY_TIMES; retry++) {
+            Order existingOrder = getExistingOrderByRequestId(userId, requestId);
+            if (existingOrder != null) {
+                return existingOrder;
+            }
+
+            waitForDuplicatedRequestResult();
+        }
+        throw new BusinessException(409, "order request is processing");
+    }
+
+    private void waitForDuplicatedRequestResult() {
+        try {
+            Thread.sleep(DUPLICATED_REQUEST_RETRY_INTERVAL_MILLIS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(409, "order request is processing");
+        }
+    }
+
+    private void markOrderRequestSuccess(Long userId, String requestId, Long orderId) {
+        int affectedRows = orderRequestMapper.markSuccess(userId, requestId, orderId);
+        if (affectedRows != 1) {
+            throw new BusinessException(500, "mark order request success failed");
+        }
     }
 
     private List<OrderItem> getActiveOrderItems(Long orderId) {
