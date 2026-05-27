@@ -36,7 +36,7 @@ import static org.mockito.Mockito.verify;
 /**
  * 下单幂等并发集成测试，验证重复 requestId 会先被订单请求表拦截，不会重复进入锁库存流程。
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 class OrderCreateIdempotencyConcurrencyIntegrationTest {
 
     @Autowired
@@ -89,6 +89,51 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
             } finally {
                 executorService.shutdownNow();
             }
+        } finally {
+            cleanOrderData(requestId);
+            resetSeedInventory(1000, 0);
+        }
+    }
+
+    @Test
+    void timeoutCancelPendingOrderOnlyReleasesStockOnce() {
+        String requestId = "REQ-timeout-cancel-" + System.nanoTime();
+        resetSeedInventory(1000, 0);
+        OrderCreateVO orderCreateVO = orderService.createOrder(TestSeedData.USER_ID, buildCreateRequest(requestId));
+        try {
+            orderService.cancelTimeoutOrder(orderCreateVO.getOrderId());
+            orderService.cancelTimeoutOrder(orderCreateVO.getOrderId());
+
+            Order order = orderMapper.selectById(orderCreateVO.getOrderId());
+            Inventory inventory = getSeedInventory();
+            assertEquals(30, order.getStatus());
+            assertEquals(1000, inventory.getAvailableStock());
+            assertEquals(0, inventory.getLockedStock());
+            assertEquals(2, inventory.getVersion());
+        } finally {
+            cleanOrderData(requestId);
+            resetSeedInventory(1000, 0);
+        }
+    }
+
+    @Test
+    void timeoutCancelIgnoresPaidOrder() {
+        String requestId = "REQ-timeout-paid-" + System.nanoTime();
+        resetSeedInventory(1000, 0);
+        OrderCreateVO orderCreateVO = orderService.createOrder(TestSeedData.USER_ID, buildCreateRequest(requestId));
+        try {
+            Order order = orderMapper.selectById(orderCreateVO.getOrderId());
+            order.setStatus(20);
+            orderMapper.updateById(order);
+
+            orderService.cancelTimeoutOrder(orderCreateVO.getOrderId());
+
+            Order currentOrder = orderMapper.selectById(orderCreateVO.getOrderId());
+            Inventory inventory = getSeedInventory();
+            assertEquals(20, currentOrder.getStatus());
+            assertEquals(998, inventory.getAvailableStock());
+            assertEquals(2, inventory.getLockedStock());
+            assertEquals(1, inventory.getVersion());
         } finally {
             cleanOrderData(requestId);
             resetSeedInventory(1000, 0);

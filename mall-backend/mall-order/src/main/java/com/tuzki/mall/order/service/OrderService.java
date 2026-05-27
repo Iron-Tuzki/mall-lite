@@ -37,6 +37,13 @@ public interface OrderService {
     void cancelOrder(Long orderId);
 
     /**
+     * 超时取消待支付订单，供 MQ 消费者处理订单超时检查消息时调用。
+     *
+     * @param orderId 订单 ID
+     */
+    void cancelTimeoutOrder(Long orderId);
+
+    /**
      * 查询指定用户的订单列表。
      *
      * @param userId 用户 ID

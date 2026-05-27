@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * 支付流水并发控制集成测试，用于验证支付状态 CAS 更新只能被一个回调请求抢占成功。
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 @Transactional
 class PaymentMapperConcurrencyTest {
 

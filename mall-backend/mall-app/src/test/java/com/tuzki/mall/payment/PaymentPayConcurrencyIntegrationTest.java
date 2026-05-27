@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * 发起支付并发幂等集成测试，验证同一订单并发发起支付时只会创建一条待支付流水。
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 class PaymentPayConcurrencyIntegrationTest {
 
     @Autowired

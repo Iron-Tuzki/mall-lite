@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 @AutoConfigureMockMvc
 @Transactional
 class ProductApiIntegrationTest {

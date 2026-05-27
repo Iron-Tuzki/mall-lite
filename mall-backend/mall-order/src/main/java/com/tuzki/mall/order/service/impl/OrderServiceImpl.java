@@ -182,6 +182,25 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void cancelTimeoutOrder(Long orderId) {
+        Order order = getActiveOrderOrNull(orderId);
+        if (order == null || OrderStatus.fromCode(order.getStatus()) != OrderStatus.PENDING_PAYMENT) {
+            return;
+        }
+
+        int affectedRows = orderMapper.markCancelIfPending(orderId);
+        if (affectedRows == 0) {
+            return;
+        }
+
+        List<OrderItem> orderItems = getActiveOrderItems(order.getId());
+        for (OrderItem orderItem : orderItems) {
+            inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
+        }
+    }
+
+    @Override
     public List<OrderMainVO> listOrders(Long userId) {
         return orderMapper.listOrders(userId);
     }
@@ -238,6 +257,12 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(404, "order not found");
         }
         return order;
+    }
+
+    private Order getActiveOrderOrNull(Long orderId) {
+        return orderMapper.selectOne(new LambdaQueryWrapper<Order>()
+                .eq(Order::getId, orderId)
+                .eq(Order::getDeleted, NOT_DELETED));
     }
 
     private Order getExistingOrderByRequestId(Long userId, String requestId) {

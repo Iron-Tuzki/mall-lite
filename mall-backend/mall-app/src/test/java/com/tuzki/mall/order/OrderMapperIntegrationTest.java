@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 /**
  * 订单 Mapper 集成测试，用于验证订单主表和订单明细表的基础读写以及订单状态条件更新能力。
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 @Transactional
 class OrderMapperIntegrationTest {
 

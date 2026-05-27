@@ -4,8 +4,10 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -104,6 +106,16 @@ public class OrderRabbitConfig {
         return BindingBuilder.bind(orderCancelQueue)
                 .to(orderCancelExchange)
                 .with(properties.getCancelRoutingKey());
+    }
+
+    /**
+     * 创建 RabbitMQ JSON 消息转换器，避免使用 Java 原生序列化传输业务消息。
+     *
+     * @return RabbitMQ JSON 消息转换器
+     */
+    @Bean
+    public MessageConverter rabbitMessageConverter() {
+        return new Jackson2JsonMessageConverter();
     }
 
     private Integer toMilliseconds(Integer timeoutMinutes) {

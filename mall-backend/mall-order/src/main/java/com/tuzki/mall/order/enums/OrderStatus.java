@@ -9,10 +9,10 @@ import java.util.Arrays;
  */
 public enum OrderStatus {
 
-    PENDING_PAYMENT(10, "pending payment"),
-    PAID(20, "paid"),
-    CANCELLED(30, "cancelled"),
-    FINISHED(40, "finished");
+    PENDING_PAYMENT(10, "待支付"),
+    PAID(20, "已支付"),
+    CANCELLED(30, "取消"),
+    FINISHED(40, "完成");
 
     private final int code;
 

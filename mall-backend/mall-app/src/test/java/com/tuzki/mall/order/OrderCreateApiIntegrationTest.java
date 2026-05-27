@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 订单创建接口集成测试，基于固定测试种子数据验证下单、幂等、取消和库存流转。
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 @AutoConfigureMockMvc
 @Transactional
 class OrderCreateApiIntegrationTest {

@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 支付接口集成测试，基于固定测试种子数据验证发起支付、回调幂等和库存确认扣减。
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 @AutoConfigureMockMvc
 @Transactional
 class PaymentApiIntegrationTest {

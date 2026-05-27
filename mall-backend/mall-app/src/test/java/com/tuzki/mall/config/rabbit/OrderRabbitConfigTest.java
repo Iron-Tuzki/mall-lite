@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +37,7 @@ class OrderRabbitConfigTest {
             DirectExchange cancelExchange = context.getBean("orderCancelExchange", DirectExchange.class);
             Queue cancelQueue = context.getBean("orderCancelQueue", Queue.class);
             Binding cancelBinding = context.getBean("orderCancelBinding", Binding.class);
+            MessageConverter messageConverter = context.getBean("rabbitMessageConverter", MessageConverter.class);
 
             assertThat(properties.getTimeoutMinutes()).isEqualTo(30);
             assertThat(delayExchange.getName()).isEqualTo("mall.order.delay.exchange");
@@ -48,6 +51,7 @@ class OrderRabbitConfigTest {
             assertThat(cancelExchange.getName()).isEqualTo("mall.order.cancel.exchange");
             assertThat(cancelQueue.getName()).isEqualTo("mall.order.cancel.queue");
             assertThat(cancelBinding.getRoutingKey()).isEqualTo("mall.order.cancel.routing-key");
+            assertThat(messageConverter).isInstanceOf(Jackson2JsonMessageConverter.class);
         });
     }
 }
