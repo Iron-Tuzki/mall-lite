@@ -107,6 +107,8 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
             Order order = orderMapper.selectById(orderCreateVO.getOrderId());
             Inventory inventory = getSeedInventory();
             assertEquals(30, order.getStatus());
+            assertEquals(20, order.getCancelType());
+            assertEquals("订单超时未支付自动取消", order.getCancelReason());
             assertEquals(1000, inventory.getAvailableStock());
             assertEquals(0, inventory.getLockedStock());
             assertEquals(2, inventory.getVersion());

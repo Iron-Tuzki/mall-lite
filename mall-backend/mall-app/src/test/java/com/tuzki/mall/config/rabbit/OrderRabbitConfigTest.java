@@ -24,6 +24,9 @@ class OrderRabbitConfigTest {
                     "mall.order.rabbit.cancel-exchange=mall.order.cancel.exchange",
                     "mall.order.rabbit.cancel-queue=mall.order.cancel.queue",
                     "mall.order.rabbit.cancel-routing-key=mall.order.cancel.routing-key",
+                    "mall.order.rabbit.failed-exchange=mall.order.failed.exchange",
+                    "mall.order.rabbit.failed-queue=mall.order.failed.queue",
+                    "mall.order.rabbit.failed-routing-key=mall.order.failed.routing-key",
                     "mall.order.rabbit.timeout-minutes=30"
             );
 
@@ -37,6 +40,9 @@ class OrderRabbitConfigTest {
             DirectExchange cancelExchange = context.getBean("orderCancelExchange", DirectExchange.class);
             Queue cancelQueue = context.getBean("orderCancelQueue", Queue.class);
             Binding cancelBinding = context.getBean("orderCancelBinding", Binding.class);
+            DirectExchange failedExchange = context.getBean("orderFailedExchange", DirectExchange.class);
+            Queue failedQueue = context.getBean("orderFailedQueue", Queue.class);
+            Binding failedBinding = context.getBean("orderFailedBinding", Binding.class);
             MessageConverter messageConverter = context.getBean("rabbitMessageConverter", MessageConverter.class);
 
             assertThat(properties.getTimeoutMinutes()).isEqualTo(30);
@@ -50,7 +56,13 @@ class OrderRabbitConfigTest {
 
             assertThat(cancelExchange.getName()).isEqualTo("mall.order.cancel.exchange");
             assertThat(cancelQueue.getName()).isEqualTo("mall.order.cancel.queue");
+            assertThat(cancelQueue.getArguments())
+                    .containsEntry("x-dead-letter-exchange", "mall.order.failed.exchange")
+                    .containsEntry("x-dead-letter-routing-key", "mall.order.failed.routing-key");
             assertThat(cancelBinding.getRoutingKey()).isEqualTo("mall.order.cancel.routing-key");
+            assertThat(failedExchange.getName()).isEqualTo("mall.order.failed.exchange");
+            assertThat(failedQueue.getName()).isEqualTo("mall.order.failed.queue");
+            assertThat(failedBinding.getRoutingKey()).isEqualTo("mall.order.failed.routing-key");
             assertThat(messageConverter).isInstanceOf(Jackson2JsonMessageConverter.class);
         });
     }

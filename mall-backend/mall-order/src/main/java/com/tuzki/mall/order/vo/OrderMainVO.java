@@ -23,6 +23,10 @@ public class OrderMainVO {
 
     private Integer status;
 
+    private Integer cancelType;
+
+    private String cancelReason;
+
     private LocalDateTime createTime;
 
     public Long getOrderId() {
@@ -79,6 +83,22 @@ public class OrderMainVO {
 
     public void setStatus(Integer status) {
         this.status = status;
+    }
+
+    public Integer getCancelType() {
+        return cancelType;
+    }
+
+    public void setCancelType(Integer cancelType) {
+        this.cancelType = cancelType;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
+
+    public void setCancelReason(String cancelReason) {
+        this.cancelReason = cancelReason;
     }
 
     public LocalDateTime getCreateTime() {

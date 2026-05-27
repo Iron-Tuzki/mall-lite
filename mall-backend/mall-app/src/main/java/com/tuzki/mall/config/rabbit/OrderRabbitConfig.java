@@ -17,7 +17,7 @@ import java.util.Map;
  * 订单 RabbitMQ 队列配置，声明订单超时延迟队列、死信交换机和自动取消队列。
  */
 @Configuration
-@EnableConfigurationProperties(OrderRabbitProperties.class)
+@EnableConfigurationProperties(OrderRabbitProperties.class) // 开启OrderRabbitProperties配置类
 public class OrderRabbitConfig {
 
     private static final String DEAD_LETTER_EXCHANGE_ARGUMENT = "x-dead-letter-exchange";
@@ -88,7 +88,10 @@ public class OrderRabbitConfig {
      */
     @Bean
     public Queue orderCancelQueue(OrderRabbitProperties properties) {
-        return new Queue(properties.getCancelQueue(), true);
+        return new Queue(properties.getCancelQueue(), true, false, false, Map.of(
+                DEAD_LETTER_EXCHANGE_ARGUMENT, properties.getFailedExchange(),
+                DEAD_LETTER_ROUTING_KEY_ARGUMENT, properties.getFailedRoutingKey()
+        ));
     }
 
     /**
@@ -106,6 +109,45 @@ public class OrderRabbitConfig {
         return BindingBuilder.bind(orderCancelQueue)
                 .to(orderCancelExchange)
                 .with(properties.getCancelRoutingKey());
+    }
+
+    /**
+     * 创建订单超时取消失败交换机，接收消费多次失败后转入的失败消息。
+     *
+     * @param properties 订单 RabbitMQ 配置属性，提供失败交换机名称
+     * @return 订单超时取消失败交换机
+     */
+    @Bean
+    public DirectExchange orderFailedExchange(OrderRabbitProperties properties) {
+        return new DirectExchange(properties.getFailedExchange(), true, false);
+    }
+
+    /**
+     * 创建订单超时取消失败队列，用于保留多次消费失败后需要人工排查的消息。
+     *
+     * @param properties 订单 RabbitMQ 配置属性，提供失败队列名称
+     * @return 订单超时取消失败队列
+     */
+    @Bean
+    public Queue orderFailedQueue(OrderRabbitProperties properties) {
+        return new Queue(properties.getFailedQueue(), true);
+    }
+
+    /**
+     * 绑定订单超时取消失败交换机和失败队列。
+     *
+     * @param orderFailedQueue 订单超时取消失败队列
+     * @param orderFailedExchange 订单超时取消失败交换机
+     * @param properties 订单 RabbitMQ 配置属性，提供失败路由键
+     * @return 订单超时取消失败绑定关系
+     */
+    @Bean
+    public Binding orderFailedBinding(@Qualifier("orderFailedQueue") Queue orderFailedQueue,
+                                      @Qualifier("orderFailedExchange") DirectExchange orderFailedExchange,
+                                      OrderRabbitProperties properties) {
+        return BindingBuilder.bind(orderFailedQueue)
+                .to(orderFailedExchange)
+                .with(properties.getFailedRoutingKey());
     }
 
     /**

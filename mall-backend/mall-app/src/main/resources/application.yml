@@ -21,6 +21,15 @@ spring:
     username: guest
     password: guest
     virtual-host: /
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 5s
 
 mybatis-plus:
   configuration:
@@ -45,4 +54,7 @@ mall:
       cancel-exchange: mall.order.cancel.exchange
       cancel-queue: mall.order.cancel.queue
       cancel-routing-key: mall.order.cancel.routing-key
+      failed-exchange: mall.order.failed.exchange
+      failed-queue: mall.order.failed.queue
+      failed-routing-key: mall.order.failed.routing-key
       timeout-minutes: 30

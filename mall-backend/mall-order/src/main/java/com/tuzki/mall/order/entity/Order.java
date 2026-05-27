@@ -26,6 +26,10 @@ public class Order extends BaseEntity {
 
     private Integer status;
 
+    private Integer cancelType;
+
+    private String cancelReason;
+
     private String receiverName;
 
     private String receiverPhone;
@@ -100,6 +104,22 @@ public class Order extends BaseEntity {
 
     public void setStatus(Integer status) {
         this.status = status;
+    }
+
+    public Integer getCancelType() {
+        return cancelType;
+    }
+
+    public void setCancelType(Integer cancelType) {
+        this.cancelType = cancelType;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
+    }
+
+    public void setCancelReason(String cancelReason) {
+        this.cancelReason = cancelReason;
     }
 
     public String getReceiverName() {

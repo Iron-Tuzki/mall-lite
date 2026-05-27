@@ -33,6 +33,8 @@ CREATE TABLE oms_order
     pay_amount              DECIMAL(10, 2)  NOT NULL COMMENT '实付金额',
     freight_amount          DECIMAL(10, 2)  NOT NULL DEFAULT 0.00 COMMENT '运费',
     status                  TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT '订单状态：10待支付，20已支付，30已取消，40已完成',
+    cancel_type             TINYINT UNSIGNED NULL COMMENT '取消类型：10用户主动取消，20超时自动取消',
+    cancel_reason           VARCHAR(100)    NULL COMMENT '取消原因',
     receiver_name           VARCHAR(64)     NOT NULL COMMENT '收货人姓名快照',
     receiver_phone          VARCHAR(20)     NOT NULL COMMENT '收货人手机号快照',
     receiver_province       VARCHAR(64)     NOT NULL COMMENT '省快照',

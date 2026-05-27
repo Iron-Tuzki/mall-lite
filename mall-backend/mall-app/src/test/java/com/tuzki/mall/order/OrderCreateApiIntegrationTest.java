@@ -255,6 +255,8 @@ class OrderCreateApiIntegrationTest {
 
         Order cancelledOrder = orderMapper.selectById(order.getId());
         assertEquals(30, cancelledOrder.getStatus());
+        assertEquals(10, cancelledOrder.getCancelType());
+        assertEquals("用户主动取消", cancelledOrder.getCancelReason());
         assertNotNull(cancelledOrder.getCancelTime());
 
         Inventory inventory = getSeedInventory();

@@ -39,18 +39,24 @@ public interface OrderMapper extends BaseMapper<Order> {
      * 将待支付订单原子更新为取消。
      *
      * @param orderId 订单 ID，用于定位待支付订单
+     * @param cancelType 取消类型，用于区分用户主动取消和系统超时取消
+     * @param cancelReason 取消原因，用于记录订单取消的业务说明
      * @return 影响行数，返回 1 表示更新成功
      */
     @Update("""
             UPDATE oms_order
             SET status = 30,
+                cancel_type = #{cancelType},
+                cancel_reason = #{cancelReason},
                 cancel_time = NOW(),
                 update_time = NOW()
             WHERE id = #{orderId}
               AND status = 10
               AND deleted = 0
             """)
-    int markCancelIfPending(@Param("orderId") Long orderId);
+    int markCancelIfPending(@Param("orderId") Long orderId,
+                            @Param("cancelType") Integer cancelType,
+                            @Param("cancelReason") String cancelReason);
 
     /**
      * 使用数据库行锁查询指定订单。
@@ -67,6 +73,8 @@ public interface OrderMapper extends BaseMapper<Order> {
                    pay_amount,
                    freight_amount,
                    status,
+                   cancel_type,
+                   cancel_reason,
                    receiver_name,
                    receiver_phone,
                    receiver_province,
@@ -96,6 +104,8 @@ public interface OrderMapper extends BaseMapper<Order> {
                              pay_amount,
                              freight_amount,
                              status,
+                             cancel_type,
+                             cancel_reason,
                              create_time
                       from oms_order
                       where user_id = #{userId}

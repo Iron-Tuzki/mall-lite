@@ -8,6 +8,7 @@ import com.tuzki.mall.order.dto.OrderCreateRequest;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
 import com.tuzki.mall.order.entity.OrderRequest;
+import com.tuzki.mall.order.enums.OrderCancelType;
 import com.tuzki.mall.order.enums.OrderRequestStatus;
 import com.tuzki.mall.order.enums.OrderStatus;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
@@ -105,6 +106,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public OrderCreateVO createOrder(Long userId, OrderCreateRequest request) {
+        // todo 此处查询是否可以删除
         Order existingOrder = getExistingOrderByRequestId(userId, request.getRequestId());
         if (existingOrder != null) {
             return toCreateVO(existingOrder);
@@ -165,7 +167,7 @@ public class OrderServiceImpl implements OrderService {
         }
         status.checkCanCancel();
 
-        if (!cancelPendingOrderAndReleaseStock(order)) {
+        if (!cancelPendingOrderAndReleaseStock(order, OrderCancelType.USER_CANCEL)) {
             handleManualCancelConflict(orderId);
         }
     }
@@ -178,7 +180,7 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
 
-        cancelPendingOrderAndReleaseStock(order);
+        cancelPendingOrderAndReleaseStock(order, OrderCancelType.TIMEOUT_CANCEL);
     }
 
     @Override
@@ -363,9 +365,9 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private boolean cancelPendingOrderAndReleaseStock(Order order) {
+    private boolean cancelPendingOrderAndReleaseStock(Order order, OrderCancelType cancelType) {
         // 只有抢到 PENDING_PAYMENT -> CANCELLED 状态流转的线程，才允许释放库存，避免并发重复释放。
-        int affectedRows = orderMapper.markCancelIfPending(order.getId());
+        int affectedRows = orderMapper.markCancelIfPending(order.getId(), cancelType.getCode(), cancelType.getReason());
         if (affectedRows == 0) {
             return false;
         }
@@ -453,6 +455,8 @@ public class OrderServiceImpl implements OrderService {
         orderDetailVO.setPayAmount(order.getPayAmount());
         orderDetailVO.setFreightAmount(order.getFreightAmount());
         orderDetailVO.setStatus(order.getStatus());
+        orderDetailVO.setCancelType(order.getCancelType());
+        orderDetailVO.setCancelReason(order.getCancelReason());
         orderDetailVO.setReceiverName(order.getReceiverName());
         orderDetailVO.setReceiverPhone(order.getReceiverPhone());
         orderDetailVO.setReceiverProvince(order.getReceiverProvince());

@@ -20,6 +20,12 @@ public class OrderRabbitProperties {
 
     private String cancelRoutingKey = "mall.order.cancel.routing-key";
 
+    private String failedExchange = "mall.order.failed.exchange";
+
+    private String failedQueue = "mall.order.failed.queue";
+
+    private String failedRoutingKey = "mall.order.failed.routing-key";
+
     private Integer timeoutMinutes = 30;
 
     public String getDelayExchange() {
@@ -68,6 +74,30 @@ public class OrderRabbitProperties {
 
     public void setCancelRoutingKey(String cancelRoutingKey) {
         this.cancelRoutingKey = cancelRoutingKey;
+    }
+
+    public String getFailedExchange() {
+        return failedExchange;
+    }
+
+    public void setFailedExchange(String failedExchange) {
+        this.failedExchange = failedExchange;
+    }
+
+    public String getFailedQueue() {
+        return failedQueue;
+    }
+
+    public void setFailedQueue(String failedQueue) {
+        this.failedQueue = failedQueue;
+    }
+
+    public String getFailedRoutingKey() {
+        return failedRoutingKey;
+    }
+
+    public void setFailedRoutingKey(String failedRoutingKey) {
+        this.failedRoutingKey = failedRoutingKey;
     }
 
     public Integer getTimeoutMinutes() {
