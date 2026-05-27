@@ -79,7 +79,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemMapper orderItemMapper;
 
     private final OrderRequestMapper orderRequestMapper;
-    
+
     private final OrderTimeoutMessageSender orderTimeoutMessageSender;
 
     public OrderServiceImpl(UserMapper userMapper,
@@ -157,27 +157,16 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancelOrder(Long orderId) {
+        // 先判断一次状态
         Order order = getActiveOrder(orderId);
         OrderStatus status = OrderStatus.fromCode(order.getStatus());
         if (status == OrderStatus.CANCELLED) {
             return;
         }
         status.checkCanCancel();
-        // 使用update更新order status来实现并发幂等
-        int affectedRows = orderMapper.markCancelIfPending(orderId);
-        if (affectedRows == 0) {
-            // 已被其他线程更新，直接返回
-            Order latestOrder = getActiveOrder(orderId);
-            if (OrderStatus.fromCode(latestOrder.getStatus()) == OrderStatus.CANCELLED) {
-                return;
-            }
-            OrderStatus.fromCode(latestOrder.getStatus()).checkCanCancel();
-            return;
-        }
 
-        List<OrderItem> orderItems = getActiveOrderItems(order.getId());
-        for (OrderItem orderItem : orderItems) {
-            inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
+        if (!cancelPendingOrderAndReleaseStock(order)) {
+            handleManualCancelConflict(orderId);
         }
     }
 
@@ -189,15 +178,7 @@ public class OrderServiceImpl implements OrderService {
             return;
         }
 
-        int affectedRows = orderMapper.markCancelIfPending(orderId);
-        if (affectedRows == 0) {
-            return;
-        }
-
-        List<OrderItem> orderItems = getActiveOrderItems(order.getId());
-        for (OrderItem orderItem : orderItems) {
-            inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
-        }
+        cancelPendingOrderAndReleaseStock(order);
     }
 
     @Override
@@ -263,6 +244,14 @@ public class OrderServiceImpl implements OrderService {
         return orderMapper.selectOne(new LambdaQueryWrapper<Order>()
                 .eq(Order::getId, orderId)
                 .eq(Order::getDeleted, NOT_DELETED));
+    }
+
+    private Order getActiveOrderForUpdate(Long orderId) {
+        Order order = orderMapper.selectByIdForUpdate(orderId);
+        if (order == null) {
+            throw new BusinessException(404, "order not found");
+        }
+        return order;
     }
 
     private Order getExistingOrderByRequestId(Long userId, String requestId) {
@@ -372,6 +361,31 @@ public class OrderServiceImpl implements OrderService {
         for (OrderItemContext itemContext : lockedItemContexts) {
             inventoryService.releaseStock(itemContext.sku().getId(), itemContext.requestItem().getQuantity());
         }
+    }
+
+    private boolean cancelPendingOrderAndReleaseStock(Order order) {
+        // 只有抢到 PENDING_PAYMENT -> CANCELLED 状态流转的线程，才允许释放库存，避免并发重复释放。
+        int affectedRows = orderMapper.markCancelIfPending(order.getId());
+        if (affectedRows == 0) {
+            return false;
+        }
+
+        List<OrderItem> orderItems = getActiveOrderItems(order.getId());
+        for (OrderItem orderItem : orderItems) {
+            inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
+        }
+        return true;
+    }
+
+    private void handleManualCancelConflict(Long orderId) {
+        // CAS 失败后用 FOR UPDATE 当前读重新确认状态，避免 RR 隔离级别下普通快照读看不到并发提交。
+        Order latestOrder = getActiveOrderForUpdate(orderId);
+        OrderStatus latestStatus = OrderStatus.fromCode(latestOrder.getStatus());
+        if (latestStatus == OrderStatus.CANCELLED) {
+            return;
+        }
+        latestStatus.checkCanCancel();
+        throw new BusinessException(409, "order cancellation is processing");
     }
 
     private Order buildOrder(OrderCreateRequest request, Address address, BigDecimal totalAmount, String orderNo) {
