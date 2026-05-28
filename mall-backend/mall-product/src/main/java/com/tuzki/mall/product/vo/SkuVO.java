@@ -3,7 +3,7 @@ package com.tuzki.mall.product.vo;
 import java.math.BigDecimal;
 
 /**
- * Public SKU view object returned by SKU APIs.
+ * SKU 视图对象，用于前台展示规格名称、价格、原价和主图等信息。
  */
 public class SkuVO {
 

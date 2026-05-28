@@ -46,6 +46,11 @@ springdoc:
     path: /v3/api-docs
 
 mall:
+  product:
+    cache:
+      detail-key-prefix: "mall:product:detail:"
+      detail-ttl-minutes: 30
+      detail-random-ttl-minutes: 5
   order:
     rabbit:
       delay-exchange: mall.order.delay.exchange

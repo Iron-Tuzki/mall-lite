@@ -1,6 +1,7 @@
 package com.tuzki.mall.product.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.product.entity.Category;
 import com.tuzki.mall.product.entity.Product;
@@ -9,16 +10,18 @@ import com.tuzki.mall.product.mapper.CategoryMapper;
 import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.mapper.SkuMapper;
 import com.tuzki.mall.product.service.ProductCatalogService;
+import com.tuzki.mall.product.service.ProductDetailCacheService;
 import com.tuzki.mall.product.vo.CategoryVO;
 import com.tuzki.mall.product.vo.ProductDetailVO;
 import com.tuzki.mall.product.vo.ProductSummaryVO;
 import com.tuzki.mall.product.vo.SkuVO;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Default implementation of product catalog query logic.
+ * 商品目录查询服务默认实现，负责分类、商品列表、推荐商品、商品详情和 SKU 查询。
  */
 @Service
 public class ProductCatalogServiceImpl implements ProductCatalogService {
@@ -27,16 +30,26 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
 
     private static final int NOT_DELETED = 0;
 
+    private static final int DEFAULT_PAGE_NO = 1;
+
+    private static final int DEFAULT_PAGE_SIZE = 20;
+
+    private static final int MAX_PAGE_SIZE = 50;
+
     private final CategoryMapper categoryMapper;
 
     private final ProductMapper productMapper;
 
     private final SkuMapper skuMapper;
 
-    public ProductCatalogServiceImpl(CategoryMapper categoryMapper, ProductMapper productMapper, SkuMapper skuMapper) {
+    private final ProductDetailCacheService productDetailCacheService;
+
+    public ProductCatalogServiceImpl(CategoryMapper categoryMapper, ProductMapper productMapper, SkuMapper skuMapper,
+                                     ProductDetailCacheService productDetailCacheService) {
         this.categoryMapper = categoryMapper;
         this.productMapper = productMapper;
         this.skuMapper = skuMapper;
+        this.productDetailCacheService = productDetailCacheService;
     }
 
     @Override
@@ -66,7 +79,28 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
     }
 
     @Override
+    public PageResult<ProductSummaryVO> recommendProducts(Integer pageNo, Integer pageSize) {
+        int safePageNo = normalizePageNo(pageNo);
+        int safePageSize = normalizePageSize(pageSize);
+        long offset = (long) (safePageNo - 1) * safePageSize;
+        long total = productMapper.selectCount(activeProductQuery());
+        List<ProductSummaryVO> records = productMapper.selectList(activeProductQuery()
+                        .orderByAsc(Product::getSort)
+                        .orderByDesc(Product::getId)
+                        .last("LIMIT " + safePageSize + " OFFSET " + offset))
+                .stream()
+                .map(this::toProductSummaryVO)
+                .toList();
+        return new PageResult<>(safePageNo, safePageSize, total, records);
+    }
+
+    @Override
     public ProductDetailVO getProductById(Long productId) {
+        ProductDetailVO cachedProductDetailVO = productDetailCacheService.get(productId);
+        if (cachedProductDetailVO != null) {
+            return cachedProductDetailVO;
+        }
+
         Product product = productMapper.selectOne(activeProductQuery()
                 .eq(Product::getId, productId));
         if (product == null) {
@@ -80,6 +114,7 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
                 .stream()
                 .map(this::toSkuVO)
                 .toList());
+        productDetailCacheService.put(productId, productDetailVO);
         return productDetailVO;
     }
 
@@ -136,6 +171,32 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
         productSummaryVO.setName(product.getName());
         productSummaryVO.setSubtitle(product.getSubtitle());
         productSummaryVO.setMainImageUrl(product.getMainImageUrl());
+        productSummaryVO.setMinPrice(findMinSkuPrice(product.getId()));
+    }
+
+    private BigDecimal findMinSkuPrice(Long productId) {
+        Sku sku = skuMapper.selectList(activeSkuQuery()
+                        .eq(Sku::getProductId, productId)
+                        .orderByAsc(Sku::getPrice)
+                        .last("LIMIT 1"))
+                .stream()
+                .findFirst()
+                .orElse(null);
+        return sku == null ? null : sku.getPrice();
+    }
+
+    private int normalizePageNo(Integer pageNo) {
+        if (pageNo == null || pageNo < DEFAULT_PAGE_NO) {
+            return DEFAULT_PAGE_NO;
+        }
+        return pageNo;
+    }
+
+    private int normalizePageSize(Integer pageSize) {
+        if (pageSize == null || pageSize < 1) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(pageSize, MAX_PAGE_SIZE);
     }
 
     private SkuVO toSkuVO(Sku sku) {

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { RefreshRight } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
+import { onMounted, ref } from 'vue';
 
+import { listRecommendProducts, type ProductSummary } from '@/api/product';
 import CategorySidebar from '@/components/CategorySidebar.vue';
 import ProductCard, { type ProductCardData } from '@/components/ProductCard.vue';
 import SiteHeader from '@/components/SiteHeader.vue';
@@ -8,7 +11,19 @@ import UserPanel from '@/components/UserPanel.vue';
 
 const channels = ['天猫', '直播', '企业购', '闪购', '超市', '闲鱼', '国际'];
 
-const products: ProductCardData[] = [
+const fallbackImages = [
+  'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=600&q=80',
+  'https://images.unsplash.com/photo-1518733057094-95b53143d2a7?auto=format&fit=crop&w=600&q=80',
+  'https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=600&q=80',
+  'https://images.unsplash.com/photo-1584346133934-a3afd2a33c4c?auto=format&fit=crop&w=600&q=80',
+  'https://images.unsplash.com/photo-1616486886892-ff366aa67ba4?auto=format&fit=crop&w=600&q=80',
+  'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=600&q=80'
+];
+
+const products = ref<ProductCardData[]>([]);
+const loading = ref(false);
+
+const fallbackProducts: ProductCardData[] = [
   {
     id: 1001,
     name: '日本进口缝隙收纳架厨房置物架冰箱夹缝移动多层落地架',
@@ -108,6 +123,35 @@ const products: ProductCardData[] = [
     imageUrl: 'https://images.unsplash.com/photo-1585653621032-a5fec164ee92?auto=format&fit=crop&w=600&q=80'
   }
 ];
+
+onMounted(() => {
+  loadRecommendProducts();
+});
+
+async function loadRecommendProducts() {
+  loading.value = true;
+  try {
+    const response = await listRecommendProducts({ pageNo: 1, pageSize: 18 });
+    products.value = response.data.data.records.map(toProductCard);
+  } catch {
+    products.value = fallbackProducts;
+    ElMessage.warning('商品接口暂时不可用，已展示本地示例商品');
+  } finally {
+    loading.value = false;
+  }
+}
+
+function toProductCard(product: ProductSummary, index: number): ProductCardData {
+  return {
+    id: product.id,
+    name: product.name,
+    subtitle: product.subtitle || '精选好物',
+    price: product.minPrice ?? 0,
+    buyers: (product.id % 90) + 10,
+    imageUrl: product.mainImageUrl || fallbackImages[index % fallbackImages.length],
+    badge: index < 2 ? '推荐' : undefined
+  };
+}
 </script>
 
 <template>
@@ -182,9 +226,9 @@ const products: ProductCardData[] = [
     <section class="page-shell product-section">
       <div class="product-heading">
         <h2 class="section-title">猜你喜欢</h2>
-        <el-button :icon="RefreshRight" circle />
+        <el-button :icon="RefreshRight" :loading="loading" circle @click="loadRecommendProducts" />
       </div>
-      <div class="product-grid">
+      <div v-loading="loading" class="product-grid">
         <ProductCard v-for="product in products" :key="product.id" :product="product" />
       </div>
     </section>

@@ -6,7 +6,9 @@ import com.tuzki.mall.product.entity.Sku;
 import com.tuzki.mall.product.mapper.CategoryMapper;
 import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.mapper.SkuMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +38,18 @@ class ProductApiIntegrationTest {
     @Autowired
     private SkuMapper skuMapper;
 
+    @Autowired
+    private RedissonClient redissonClient;
+
+    private Long cachedProductId;
+
+    @AfterEach
+    void clearProductDetailCache() {
+        if (cachedProductId != null) {
+            redissonClient.getBucket("mall:product:detail:" + cachedProductId).delete();
+        }
+    }
+
     @Test
     void productReadApisReturnActiveProductCatalogData() throws Exception {
         long suffix = System.nanoTime();
@@ -57,6 +71,7 @@ class ProductApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].id").value(productId))
                 .andExpect(jsonPath("$.data[0].name").value("Phone " + suffix))
+                .andExpect(jsonPath("$.data[0].minPrice").value(1999.00))
                 .andExpect(jsonPath("$.data[?(@.id == %s)]".formatted(hiddenProductId)).doesNotExist());
 
         mockMvc.perform(get("/api/products").param("categoryId", categoryId.toString()))
@@ -69,6 +84,7 @@ class ProductApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.id").value(productId))
                 .andExpect(jsonPath("$.data.name").value("Phone " + suffix))
+                .andExpect(jsonPath("$.data.minPrice").value(1999.00))
                 .andExpect(jsonPath("$.data.skus[0].id").value(skuId))
                 .andExpect(jsonPath("$.data.skus[0].price").value(1999.00));
 
@@ -93,6 +109,53 @@ class ProductApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(404))
                 .andExpect(jsonPath("$.message").value("sku not found"));
+    }
+
+    @Test
+    void recommendProductsReturnsPagedActiveProductSummaries() throws Exception {
+        long suffix = System.nanoTime();
+        Long categoryId = insertCategory("Recommend " + suffix);
+        Long firstProductId = insertProduct(categoryId, "R1" + suffix, "Recommend First " + suffix);
+        Long secondProductId = insertProduct(categoryId, "R2" + suffix, "Recommend Second " + suffix);
+        insertOfflineProduct(categoryId, "R3" + suffix, "Recommend Hidden " + suffix);
+        insertSku(firstProductId, "RS1" + suffix, "First SKU", new BigDecimal("99.90"));
+        insertSku(secondProductId, "RS2" + suffix, "Second SKU", new BigDecimal("88.80"));
+
+        mockMvc.perform(get("/api/products/recommend")
+                        .param("pageNo", "1")
+                        .param("pageSize", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.pageNo").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(2))
+                .andExpect(jsonPath("$.data.total").isNumber())
+                .andExpect(jsonPath("$.data.records[0].id").value(secondProductId))
+                .andExpect(jsonPath("$.data.records[0].minPrice").value(88.80))
+                .andExpect(jsonPath("$.data.records[1].id").value(firstProductId))
+                .andExpect(jsonPath("$.data.records[1].minPrice").value(99.90));
+    }
+
+    @Test
+    void productDetailApiReadsFromCacheAfterFirstQuery() throws Exception {
+        long suffix = System.nanoTime();
+        Long categoryId = insertCategory("Cache " + suffix);
+        Long productId = insertProduct(categoryId, "C" + suffix, "Cache Product " + suffix);
+        cachedProductId = productId;
+        insertSku(productId, "CS" + suffix, "Cache SKU", new BigDecimal("66.60"));
+
+        mockMvc.perform(get("/api/products/{productId}", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.name").value("Cache Product " + suffix));
+
+        Product product = productMapper.selectById(productId);
+        product.setName("Changed Product " + suffix);
+        productMapper.updateById(product);
+
+        mockMvc.perform(get("/api/products/{productId}", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.name").value("Cache Product " + suffix));
     }
 
     private Long insertCategory(String name) {

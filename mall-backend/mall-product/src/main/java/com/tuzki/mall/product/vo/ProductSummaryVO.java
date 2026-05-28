@@ -1,7 +1,9 @@
 package com.tuzki.mall.product.vo;
 
+import java.math.BigDecimal;
+
 /**
- * Public product summary view object returned by product list APIs.
+ * 商品摘要视图对象，用于商品列表、推荐商品列表等前台浏览接口。
  */
 public class ProductSummaryVO {
 
@@ -16,6 +18,8 @@ public class ProductSummaryVO {
     private String subtitle;
 
     private String mainImageUrl;
+
+    private BigDecimal minPrice;
 
     public Long getId() {
         return id;
@@ -63,5 +67,13 @@ public class ProductSummaryVO {
 
     public void setMainImageUrl(String mainImageUrl) {
         this.mainImageUrl = mainImageUrl;
+    }
+
+    public BigDecimal getMinPrice() {
+        return minPrice;
+    }
+
+    public void setMinPrice(BigDecimal minPrice) {
+        this.minPrice = minPrice;
     }
 }

@@ -1,5 +1,6 @@
 package com.tuzki.mall.product.service;
 
+import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.product.vo.CategoryVO;
 import com.tuzki.mall.product.vo.ProductDetailVO;
 import com.tuzki.mall.product.vo.ProductSummaryVO;
@@ -8,38 +9,47 @@ import com.tuzki.mall.product.vo.SkuVO;
 import java.util.List;
 
 /**
- * Product catalog query service for categories, products, and SKUs.
+ * 商品目录查询接口，负责为前台提供分类、商品、SKU 和推荐商品等浏览能力。
  */
 public interface ProductCatalogService {
 
     /**
-     * Lists all active product categories.
+     * 查询所有启用状态的商品分类。
      *
-     * @return active category list
+     * @return 启用状态的商品分类列表
      */
     List<CategoryVO> listCategories();
 
     /**
-     * Lists all active products, optionally filtered by category id.
+     * 查询启用状态的商品列表，可按分类过滤。
      *
-     * @param categoryId category id filter, nullable
-     * @return active product summary list
+     * @param categoryId 商品分类 ID，可为空；为空时查询所有启用商品
+     * @return 商品摘要列表
      */
     List<ProductSummaryVO> listProducts(Long categoryId);
 
     /**
-     * Gets active product detail by product id.
+     * 分页查询推荐商品列表。
      *
-     * @param productId product id
-     * @return product detail with active SKUs
+     * @param pageNo 当前页码，从 1 开始
+     * @param pageSize 每页商品数量，服务端会限制最大值
+     * @return 推荐商品分页摘要
+     */
+    PageResult<ProductSummaryVO> recommendProducts(Integer pageNo, Integer pageSize);
+
+    /**
+     * 根据商品 ID 查询启用状态的商品详情。
+     *
+     * @param productId 商品 ID
+     * @return 商品详情和启用状态的 SKU 列表
      */
     ProductDetailVO getProductById(Long productId);
 
     /**
-     * Gets active SKU detail by SKU id.
+     * 根据 SKU ID 查询启用状态的 SKU 信息。
      *
-     * @param skuId SKU id
-     * @return SKU public information
+     * @param skuId SKU ID
+     * @return SKU 前台展示信息
      */
     SkuVO getSkuById(Long skuId);
 }

@@ -3,7 +3,7 @@ package com.tuzki.mall.product.vo;
 import java.util.List;
 
 /**
- * Public product detail view object returned by product detail APIs.
+ * 商品详情视图对象，用于前台商品详情页展示商品基础信息和 SKU 列表。
  */
 public class ProductDetailVO extends ProductSummaryVO {
 

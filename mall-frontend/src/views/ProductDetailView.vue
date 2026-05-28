@@ -1,12 +1,51 @@
 <script setup lang="ts">
 import { ArrowLeft, ShoppingCart } from '@element-plus/icons-vue';
-import { computed } from 'vue';
+import { ElMessage } from 'element-plus';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+
+import { getProductDetail, type ProductDetail } from '@/api/product';
 
 const route = useRoute();
 const router = useRouter();
 
 const productId = computed(() => Number(route.params.id));
+const product = ref<ProductDetail | null>(null);
+const loading = ref(false);
+
+const mainImage = computed(() => {
+  return product.value?.mainImageUrl
+    || product.value?.skus?.[0]?.mainImageUrl
+    || 'https://images.unsplash.com/photo-1616486886892-ff366aa67ba4?auto=format&fit=crop&w=900&q=80';
+});
+
+const displayPrice = computed(() => {
+  return product.value?.minPrice ?? product.value?.skus?.[0]?.price ?? 0;
+});
+
+onMounted(() => {
+  loadProductDetail();
+});
+
+watch(productId, () => {
+  loadProductDetail();
+});
+
+async function loadProductDetail() {
+  if (!productId.value) {
+    return;
+  }
+  loading.value = true;
+  try {
+    const response = await getProductDetail(productId.value);
+    product.value = response.data.data;
+  } catch {
+    product.value = null;
+    ElMessage.error('商品详情加载失败');
+  } finally {
+    loading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -14,30 +53,36 @@ const productId = computed(() => Number(route.params.id));
     <div class="page-shell">
       <el-button class="back-button" :icon="ArrowLeft" text @click="router.back()">返回首页</el-button>
 
-      <section class="detail-panel">
+      <section v-loading="loading" class="detail-panel">
         <div class="gallery">
           <img
             alt="商品详情主图"
-            src="https://images.unsplash.com/photo-1616486886892-ff366aa67ba4?auto=format&fit=crop&w=900&q=80"
+            :src="mainImage"
           />
         </div>
 
         <div class="product-info">
           <el-tag type="danger">商品 ID：{{ productId }}</el-tag>
-          <h1>商品详情页占位</h1>
-          <p class="subtitle">下一步这里会接入 `/api/products/{{ productId }}`，并由后端 Redis 缓存商品详情。</p>
+          <h1>{{ product?.name || '商品详情' }}</h1>
+          <p class="subtitle">{{ product?.description || product?.subtitle || '商品详情正在路上。' }}</p>
 
           <div class="price-box">
             <span>到手价</span>
-            <strong>¥37.8</strong>
+            <strong>¥{{ displayPrice }}</strong>
           </div>
 
           <div class="sku-section">
             <h2>规格</h2>
             <div class="sku-list">
-              <button class="sku active">默认规格</button>
-              <button class="sku">组合装</button>
-              <button class="sku">家庭装</button>
+              <button
+                v-for="(sku, index) in product?.skus || []"
+                :key="sku.id"
+                class="sku"
+                :class="{ active: index === 0 }"
+              >
+                {{ sku.skuName }}
+              </button>
+              <button v-if="!product?.skus?.length" class="sku active">默认规格</button>
             </div>
           </div>
 

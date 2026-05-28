@@ -1,5 +1,6 @@
 package com.tuzki.mall.product.controller;
 
+import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.api.Result;
 import com.tuzki.mall.product.service.ProductCatalogService;
 import com.tuzki.mall.product.vo.ProductDetailVO;
@@ -13,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * REST controller for querying products.
+ * 商品前台查询控制器，提供商品列表、推荐商品和商品详情查询接口。
  */
 @RestController
 @RequestMapping("/api/products")
@@ -28,6 +29,13 @@ public class ProductController {
     @GetMapping
     public Result<List<ProductSummaryVO>> listProducts(@RequestParam(required = false) Long categoryId) {
         return Result.success(productCatalogService.listProducts(categoryId));
+    }
+
+    @GetMapping("/recommend")
+    public Result<PageResult<ProductSummaryVO>> recommendProducts(
+            @RequestParam(required = false) Integer pageNo,
+            @RequestParam(required = false) Integer pageSize) {
+        return Result.success(productCatalogService.recommendProducts(pageNo, pageSize));
     }
 
     @GetMapping("/{productId}")

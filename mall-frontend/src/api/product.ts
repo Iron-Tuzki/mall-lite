@@ -12,6 +12,7 @@ export interface ProductSummary {
   name: string;
   subtitle: string;
   mainImageUrl: string;
+  minPrice: number | null;
 }
 
 export interface SkuItem {
@@ -36,12 +37,23 @@ export interface Result<T> {
   data: T;
 }
 
+export interface PageResult<T> {
+  pageNo: number;
+  pageSize: number;
+  total: number;
+  records: T[];
+}
+
 export function listCategories() {
   return http.get<Result<CategoryItem[]>>('/api/categories');
 }
 
 export function listProducts(params?: { categoryId?: number; keyword?: string }) {
   return http.get<Result<ProductSummary[]>>('/api/products', { params });
+}
+
+export function listRecommendProducts(params?: { pageNo?: number; pageSize?: number }) {
+  return http.get<Result<PageResult<ProductSummary>>>('/api/products/recommend', { params });
 }
 
 export function getProductDetail(productId: number) {
