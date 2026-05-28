@@ -66,6 +66,65 @@ const statusText = computed(() => {
   return '未知状态';
 });
 
+const isPendingPayment = computed(() => order.value?.status === 10);
+
+const resultView = computed(() => {
+  if (!order.value) {
+    return {
+      badge: '订单处理中',
+      title: '正在加载订单',
+      description: '正在获取订单最新状态，请稍候。',
+      countdownLabel: '剩余支付时间'
+    };
+  }
+  if (order.value.status === 10 && remainingSeconds.value > 0) {
+    return {
+      badge: '下单成功',
+      title: '订单已创建，等待支付',
+      description: '请在倒计时结束前完成支付，超时后系统会自动取消订单并释放库存。',
+      countdownLabel: '剩余支付时间'
+    };
+  }
+  if (order.value.status === 10) {
+    return {
+      badge: '支付超时',
+      title: '支付时间已结束',
+      description: '订单仍在等待系统关闭，稍后会自动取消并释放库存。',
+      countdownLabel: '支付时间已结束'
+    };
+  }
+  if (order.value.status === 20) {
+    return {
+      badge: '支付成功',
+      title: '订单已支付，等待发货',
+      description: '支付已经完成，商家会尽快处理发货。',
+      countdownLabel: '支付已完成'
+    };
+  }
+  if (order.value.status === 30) {
+    return {
+      badge: '订单已取消',
+      title: '订单已取消',
+      description: '该订单已经关闭，如已锁定库存，系统会完成释放。',
+      countdownLabel: '订单已关闭'
+    };
+  }
+  if (order.value.status === 40) {
+    return {
+      badge: '订单完成',
+      title: '订单已完成',
+      description: '订单已经完成，感谢你的购买。',
+      countdownLabel: '订单已完成'
+    };
+  }
+  return {
+    badge: '订单状态未知',
+    title: '订单状态待确认',
+    description: '暂时无法识别订单状态，请稍后刷新查看。',
+    countdownLabel: '订单状态'
+  };
+});
+
 onMounted(async () => {
   await loadOrder();
   timer = window.setInterval(() => {
@@ -144,13 +203,13 @@ async function handleMockCallback(mockResult: MockPaymentResult) {
 
   <main v-loading="loading" class="result-page page-shell">
     <section class="result-card">
-      <div class="status-badge">下单成功</div>
-      <h1>订单已创建，等待支付</h1>
-      <p>请在倒计时结束前完成支付，超时后系统会自动取消订单并释放库存。</p>
+      <div class="status-badge">{{ resultView.badge }}</div>
+      <h1>{{ resultView.title }}</h1>
+      <p>{{ resultView.description }}</p>
 
-      <div class="countdown-box">
+      <div v-if="isPendingPayment" class="countdown-box" :class="{ expired: remainingSeconds === 0 }">
         <el-icon><Clock /></el-icon>
-        <span>剩余支付时间</span>
+        <span>{{ resultView.countdownLabel }}</span>
         <strong>{{ countdownText }}</strong>
       </div>
 
@@ -175,9 +234,11 @@ async function handleMockCallback(mockResult: MockPaymentResult) {
 
       <div class="action-row">
         <el-button :icon="House" size="large" @click="router.push('/')">返回首页</el-button>
+        <el-button size="large" @click="router.push('/profile')">我的主页</el-button>
         <el-button
+          v-if="isPendingPayment"
           class="pay-button"
-          :disabled="order?.status !== 10 || remainingSeconds === 0"
+          :disabled="remainingSeconds === 0"
           :icon="CreditCard"
           :loading="paying"
           size="large"
@@ -263,6 +324,11 @@ async function handleMockCallback(mockResult: MockPaymentResult) {
   font-size: 26px;
 }
 
+.countdown-box.expired {
+  color: #909399;
+  background: #f4f4f5;
+}
+
 .order-meta {
   display: grid;
   gap: 12px;
@@ -282,8 +348,19 @@ async function handleMockCallback(mockResult: MockPaymentResult) {
   color: #777;
 }
 
+.order-meta strong {
+  min-width: 0;
+  text-align: right;
+  word-break: break-all;
+}
+
+.price {
+  color: #ff4d00;
+}
+
 .action-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
   margin-bottom: 18px;
@@ -311,6 +388,15 @@ async function handleMockCallback(mockResult: MockPaymentResult) {
 
   .action-row {
     flex-direction: column;
+  }
+
+  .order-meta div {
+    display: grid;
+    gap: 8px;
+  }
+
+  .order-meta strong {
+    text-align: left;
   }
 
   .callback-row {
