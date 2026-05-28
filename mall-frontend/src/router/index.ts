@@ -40,6 +40,22 @@ const router = createRouter({
       meta: {
         requiresAuth: true
       }
+    },
+    {
+      path: '/order/confirm',
+      name: 'order-confirm',
+      component: () => import('@/views/OrderConfirmView.vue'),
+      meta: {
+        requiresAuth: true
+      }
+    },
+    {
+      path: '/order/result/:orderId',
+      name: 'order-result',
+      component: () => import('@/views/OrderResultView.vue'),
+      meta: {
+        requiresAuth: true
+      }
     }
   ],
   scrollBehavior() {
