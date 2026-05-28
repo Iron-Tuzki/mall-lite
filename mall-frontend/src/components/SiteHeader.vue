@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { Search, ShoppingCart, User } from '@element-plus/icons-vue';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { useAuthStore } from '@/stores/auth';
+
 const router = useRouter();
+const authStore = useAuthStore();
 const keyword = ref('');
+const accountLinkText = computed(() => (authStore.isLoggedIn ? authStore.displayName : '登录'));
+const accountLinkTarget = computed(() => (authStore.isLoggedIn ? '/profile' : '/login'));
 
 function searchProducts() {
   router.push({ path: router.currentRoute.value.path, query: keyword.value ? { keyword: keyword.value } : {} });
@@ -36,9 +41,9 @@ function searchProducts() {
       </div>
 
       <nav class="header-actions" aria-label="用户入口">
-        <RouterLink class="action-link" to="/">
+        <RouterLink class="action-link" :to="accountLinkTarget">
           <el-icon><User /></el-icon>
-          登录
+          {{ accountLinkText }}
         </RouterLink>
         <RouterLink class="action-link cart-link" to="/">
           <el-icon><ShoppingCart /></el-icon>
@@ -61,7 +66,7 @@ function searchProducts() {
 
 .header-inner {
   display: grid;
-  grid-template-columns: 180px minmax(320px, 1fr) 180px;
+  grid-template-columns: 180px minmax(320px, 1fr) 220px;
   gap: 24px;
   align-items: center;
   min-height: 92px;
@@ -117,19 +122,24 @@ function searchProducts() {
 .header-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
+  min-width: 0;
 }
 
 .action-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  justify-content: center;
+  min-width: 88px;
   min-height: 40px;
   padding: 0 12px;
   color: #373737;
   background: #fff3ec;
   border-radius: 8px;
   font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .cart-link {

@@ -1,23 +1,40 @@
 <script setup lang="ts">
 import { Clock, CollectionTag, Goods, Star } from '@element-plus/icons-vue';
+import { computed } from 'vue';
+import { useRouter } from 'vue-router';
+
+import { useAuthStore } from '@/stores/auth';
+
+const router = useRouter();
+const authStore = useAuthStore();
+
+const helloText = computed(() => (authStore.isLoggedIn ? authStore.displayName : '上午好'));
+
+function goLoginOrProfile() {
+  router.push(authStore.isLoggedIn ? '/profile' : '/login');
+}
 </script>
 
 <template>
   <aside class="user-panel">
     <div class="profile-row">
       <img
-        alt="用户头像"
+        :alt="helloText"
         class="avatar"
-        src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=160&q=80"
+        :src="authStore.user?.avatarUrl || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=160&q=80'"
       />
       <div>
-        <div class="hello">上午好</div>
-        <div class="quick-links">注册 / 开店</div>
+        <div class="hello">{{ helloText }}</div>
+        <div class="quick-links">{{ authStore.isLoggedIn ? authStore.maskedPhone : '注册 / 开店' }}</div>
       </div>
     </div>
 
-    <div class="login-copy">登录后查看更多推荐、订单和购物车信息</div>
-    <el-button class="login-button" type="primary">立即登录</el-button>
+    <div class="login-copy">
+      {{ authStore.isLoggedIn ? '进入个人主页查看订单、地址和账号信息' : '登录后查看更多推荐、订单和购物车信息' }}
+    </div>
+    <el-button class="login-button" type="primary" @click="goLoginOrProfile">
+      {{ authStore.isLoggedIn ? '个人主页' : '立即登录' }}
+    </el-button>
 
     <div class="shortcut-grid">
       <a href="#">
