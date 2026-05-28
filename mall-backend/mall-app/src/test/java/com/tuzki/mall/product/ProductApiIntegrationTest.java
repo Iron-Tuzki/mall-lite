@@ -136,6 +136,37 @@ class ProductApiIntegrationTest {
     }
 
     @Test
+    void recommendProductsScrollReturnsNextBatchByCursor() throws Exception {
+        long suffix = System.nanoTime();
+        Long categoryId = insertCategory("Scroll " + suffix);
+        Long newestProductId = insertProduct(categoryId, "SC3" + suffix, "Scroll Newest " + suffix);
+        Long middleProductId = insertProduct(categoryId, "SC2" + suffix, "Scroll Middle " + suffix);
+        Long oldestProductId = insertProduct(categoryId, "SC1" + suffix, "Scroll Oldest " + suffix);
+        insertSku(newestProductId, "SCS3" + suffix, "Newest SKU", new BigDecimal("33.30"));
+        insertSku(middleProductId, "SCS2" + suffix, "Middle SKU", new BigDecimal("22.20"));
+        insertSku(oldestProductId, "SCS1" + suffix, "Oldest SKU", new BigDecimal("11.10"));
+
+        mockMvc.perform(get("/api/products/recommend/scroll")
+                        .param("pageSize", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.records[0].id").value(oldestProductId))
+                .andExpect(jsonPath("$.data.records[1].id").value(middleProductId))
+                .andExpect(jsonPath("$.data.nextSort").value(1))
+                .andExpect(jsonPath("$.data.nextId").value(middleProductId))
+                .andExpect(jsonPath("$.data.hasMore").value(true));
+
+        mockMvc.perform(get("/api/products/recommend/scroll")
+                        .param("pageSize", "2")
+                        .param("lastSort", "1")
+                        .param("lastId", middleProductId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.records[0].id").value(newestProductId))
+                .andExpect(jsonPath("$.data.records[?(@.id == %s)]".formatted(middleProductId)).doesNotExist());
+    }
+
+    @Test
     void productDetailApiReadsFromCacheAfterFirstQuery() throws Exception {
         long suffix = System.nanoTime();
         Long categoryId = insertCategory("Cache " + suffix);

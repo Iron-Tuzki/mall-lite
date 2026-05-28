@@ -1,5 +1,6 @@
 package com.tuzki.mall.product.controller;
 
+import com.tuzki.mall.common.api.CursorPageResult;
 import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.api.Result;
 import com.tuzki.mall.product.service.ProductCatalogService;
@@ -36,6 +37,14 @@ public class ProductController {
             @RequestParam(required = false) Integer pageNo,
             @RequestParam(required = false) Integer pageSize) {
         return Result.success(productCatalogService.recommendProducts(pageNo, pageSize));
+    }
+
+    @GetMapping("/recommend/scroll")
+    public Result<CursorPageResult<ProductSummaryVO>> scrollRecommendProducts(
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) Integer lastSort,
+            @RequestParam(required = false) Long lastId) {
+        return Result.success(productCatalogService.scrollRecommendProducts(pageSize, lastSort, lastId));
     }
 
     @GetMapping("/{productId}")

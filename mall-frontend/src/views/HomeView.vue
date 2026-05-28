@@ -3,7 +3,7 @@ import { RefreshRight } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
-import { listRecommendProducts, type ProductSummary } from '@/api/product';
+import { scrollRecommendProducts, type ProductSummary } from '@/api/product';
 import CategorySidebar from '@/components/CategorySidebar.vue';
 import ProductCard, { type ProductCardData } from '@/components/ProductCard.vue';
 import SiteHeader from '@/components/SiteHeader.vue';
@@ -45,9 +45,9 @@ const products = ref<ProductCardData[]>([]);
 const loading = ref(false);
 const loadingMore = ref(false);
 const finished = ref(false);
-const pageNo = ref(1);
 const pageSize = 6;
-const total = ref(0);
+const nextSort = ref<number | null>(null);
+const nextId = ref<number | null>(null);
 const loadMoreTrigger = ref<HTMLElement | null>(null);
 
 let observer: IntersectionObserver | null = null;
@@ -73,13 +73,13 @@ async function loadNextPage() {
   if (loading.value || loadingMore.value || finished.value) {
     return;
   }
-  pageNo.value += 1;
   await loadRecommendProducts(false);
 }
 
 async function loadRecommendProducts(reset: boolean) {
   if (reset) {
-    pageNo.value = 1;
+    nextSort.value = null;
+    nextId.value = null;
     finished.value = false;
     loading.value = true;
   } else {
@@ -87,22 +87,25 @@ async function loadRecommendProducts(reset: boolean) {
   }
 
   try {
-    const response = await listRecommendProducts({ pageNo: pageNo.value, pageSize });
+    const response = await scrollRecommendProducts({
+      pageSize,
+      lastSort: reset ? null : nextSort.value,
+      lastId: reset ? null : nextId.value
+    });
     const pageData = response.data.data;
     const nextProducts = pageData.records.map((product, index) => {
-      const globalIndex = (pageData.pageNo - 1) * pageData.pageSize + index;
+      const globalIndex = products.value.length + index;
       return toProductCard(product, globalIndex);
     });
 
-    total.value = pageData.total;
     products.value = reset ? nextProducts : [...products.value, ...nextProducts];
-    finished.value = products.value.length >= pageData.total || nextProducts.length === 0;
+    nextSort.value = pageData.nextSort;
+    nextId.value = pageData.nextId;
+    finished.value = !pageData.hasMore || nextProducts.length === 0;
   } catch {
     if (reset) {
       products.value = fallbackProducts;
       finished.value = true;
-    } else {
-      pageNo.value -= 1;
     }
     ElMessage.warning('商品接口暂时不可用，已展示本地示例商品');
   } finally {
@@ -241,7 +244,7 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
       <div class="product-heading">
         <div>
           <h2 class="section-title">猜你喜欢</h2>
-          <span v-if="total" class="total-text">共 {{ total }} 件商品</span>
+          <span v-if="products.length" class="total-text">已加载 {{ products.length }} 件商品</span>
         </div>
         <el-button :icon="RefreshRight" :loading="loading" circle @click="refreshProducts" />
       </div>

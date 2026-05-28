@@ -44,6 +44,13 @@ export interface PageResult<T> {
   records: T[];
 }
 
+export interface CursorPageResult<T> {
+  records: T[];
+  nextSort: number | null;
+  nextId: number | null;
+  hasMore: boolean;
+}
+
 export function listCategories() {
   return http.get<Result<CategoryItem[]>>('/api/categories');
 }
@@ -54,6 +61,10 @@ export function listProducts(params?: { categoryId?: number; keyword?: string })
 
 export function listRecommendProducts(params?: { pageNo?: number; pageSize?: number }) {
   return http.get<Result<PageResult<ProductSummary>>>('/api/products/recommend', { params });
+}
+
+export function scrollRecommendProducts(params?: { pageSize?: number; lastSort?: number | null; lastId?: number | null }) {
+  return http.get<Result<CursorPageResult<ProductSummary>>>('/api/products/recommend/scroll', { params });
 }
 
 export function getProductDetail(productId: number) {

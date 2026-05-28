@@ -1,6 +1,7 @@
 package com.tuzki.mall.product.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.tuzki.mall.common.api.CursorPageResult;
 import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.product.entity.Category;
@@ -95,6 +96,28 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
     }
 
     @Override
+    public CursorPageResult<ProductSummaryVO> scrollRecommendProducts(Integer pageSize, Integer lastSort, Long lastId) {
+        int safePageSize = normalizePageSize(pageSize);
+        List<Product> products = productMapper.selectList(applyRecommendCursor(activeProductQuery(), lastSort, lastId)
+                .orderByAsc(Product::getSort)
+                .orderByDesc(Product::getId)
+                .last("LIMIT " + (safePageSize + 1)));
+
+        boolean hasMore = products.size() > safePageSize;
+        List<Product> visibleProducts = products.stream()
+                .limit(safePageSize)
+                .toList();
+        List<ProductSummaryVO> records = visibleProducts.stream()
+                .map(this::toProductSummaryVO)
+                .toList();
+
+        Product lastProduct = visibleProducts.isEmpty() ? null : visibleProducts.get(visibleProducts.size() - 1);
+        Integer nextSort = lastProduct == null ? null : lastProduct.getSort();
+        Long nextId = lastProduct == null ? null : lastProduct.getId();
+        return new CursorPageResult<>(records, nextSort, nextId, hasMore);
+    }
+
+    @Override
     public ProductDetailVO getProductById(Long productId) {
         ProductDetailVO cachedProductDetailVO = productDetailCacheService.get(productId);
         if (cachedProductDetailVO != null) {
@@ -138,6 +161,19 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
         return new LambdaQueryWrapper<Sku>()
                 .eq(Sku::getStatus, ACTIVE_STATUS)
                 .eq(Sku::getDeleted, NOT_DELETED);
+    }
+
+    private LambdaQueryWrapper<Product> applyRecommendCursor(LambdaQueryWrapper<Product> queryWrapper,
+                                                             Integer lastSort,
+                                                             Long lastId) {
+        if (lastSort == null || lastId == null) {
+            return queryWrapper;
+        }
+        return queryWrapper.and(cursor -> cursor
+                .gt(Product::getSort, lastSort)
+                .or()
+                .eq(Product::getSort, lastSort)
+                .lt(Product::getId, lastId));
     }
 
     private CategoryVO toCategoryVO(Category category) {
