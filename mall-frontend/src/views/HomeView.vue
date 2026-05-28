@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RefreshRight } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { onMounted, ref } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 import { listRecommendProducts, type ProductSummary } from '@/api/product';
 import CategorySidebar from '@/components/CategorySidebar.vue';
@@ -20,124 +20,138 @@ const fallbackImages = [
   'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=600&q=80'
 ];
 
-const products = ref<ProductCardData[]>([]);
-const loading = ref(false);
-
 const fallbackProducts: ProductCardData[] = [
   {
     id: 1001,
-    name: '日本进口缝隙收纳架厨房置物架冰箱夹缝移动多层落地架',
+    name: '夹缝移动收纳架厨房置物架',
     subtitle: '送运费险',
     price: 29,
     buyers: 23,
-    imageUrl: 'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=600&q=80'
+    imageUrl: fallbackImages[0],
+    badge: '示例'
   },
   {
     id: 1002,
-    name: '北美红雀冬青浆果欧式陶瓷餐具汤锅汤碗家用套装',
+    name: '复古陶瓷汤锅餐具套装',
     subtitle: '精选好物',
     price: 118,
     buyers: 13,
-    imageUrl: 'https://images.unsplash.com/photo-1518733057094-95b53143d2a7?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1003,
-    name: '结婚酒曲婚庆用品大红色双喜酒杯陶瓷小号杯',
-    subtitle: '礼盒装',
-    price: 29.85,
-    buyers: 27,
-    imageUrl: 'https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1004,
-    name: '仙山集日式皆川明风刺绣布艺锅盖把手防烫垫',
-    subtitle: '全店满减',
-    price: 11.5,
-    buyers: 67,
-    imageUrl: 'https://images.unsplash.com/photo-1584346133934-a3afd2a33c4c?auto=format&fit=crop&w=600&q=80',
-    badge: '春季焕新'
-  },
-  {
-    id: 1005,
-    name: '衣柜收纳神器分层置物架卧室柜子隔板储物架',
-    subtitle: '家居收纳',
-    price: 37.8,
-    buyers: 56,
-    imageUrl: 'https://images.unsplash.com/photo-1616486886892-ff366aa67ba4?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1006,
-    name: '木果盘原木创意家用木质干果盘客厅大号水果篮',
-    subtitle: '送运费险',
-    price: 33,
-    buyers: 12,
-    imageUrl: 'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1007,
-    name: '304 不锈钢筷子勺子套装学生便携两件套',
-    subtitle: '厨房好物',
-    price: 19.9,
-    buyers: 89,
-    imageUrl: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1008,
-    name: '法式复古玫瑰 ins 少女心床裙款田园风四件套',
-    subtitle: '新品上架',
-    price: 168,
-    buyers: 35,
-    imageUrl: 'https://images.unsplash.com/photo-1616627451515-cbc80e6ece35?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1009,
-    name: '特大号粗藤脏衣收纳篮衣篓藤编洗衣桶玩具筐',
-    subtitle: '春季焕新',
-    price: 58,
-    buyers: 41,
-    imageUrl: 'https://images.unsplash.com/photo-1604014237800-1c9102c219da?auto=format&fit=crop&w=600&q=80',
-    badge: '热门'
-  },
-  {
-    id: 1010,
-    name: '沙拉加厚不锈钢大盆家用洗菜盆圆形汤盆',
-    subtitle: '厨房必备',
-    price: 24.9,
-    buyers: 73,
-    imageUrl: 'https://images.unsplash.com/photo-1584464491033-06628f3a6b7b?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1011,
-    name: '特价超大号实木托盘长方形家用端菜餐盘',
-    subtitle: '实木质感',
-    price: 45,
-    buyers: 18,
-    imageUrl: 'https://images.unsplash.com/photo-1616627547584-bf28cee262db?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 1012,
-    name: '不锈钢煎蛋神器早餐锅迷你煎锅蛋饺模具',
-    subtitle: '早餐神器',
-    price: 16.8,
-    buyers: 52,
-    imageUrl: 'https://images.unsplash.com/photo-1585653621032-a5fec164ee92?auto=format&fit=crop&w=600&q=80'
+    imageUrl: fallbackImages[1],
+    badge: '示例'
   }
 ];
 
-onMounted(() => {
-  loadRecommendProducts();
+const products = ref<ProductCardData[]>([]);
+const loading = ref(false);
+const loadingMore = ref(false);
+const finished = ref(false);
+const pageNo = ref(1);
+const pageSize = 6;
+const total = ref(0);
+const loadMoreTrigger = ref<HTMLElement | null>(null);
+
+let observer: IntersectionObserver | null = null;
+
+onMounted(async () => {
+  await loadRecommendProducts(true);
+  await nextTick();
+  observeLoadMoreTrigger();
+  window.addEventListener('scroll', handleWindowScroll, { passive: true });
+  await ensureEnoughScrollableContent();
 });
 
-async function loadRecommendProducts() {
-  loading.value = true;
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  window.removeEventListener('scroll', handleWindowScroll);
+});
+
+async function refreshProducts() {
+  await loadRecommendProducts(true);
+}
+
+async function loadNextPage() {
+  if (loading.value || loadingMore.value || finished.value) {
+    return;
+  }
+  pageNo.value += 1;
+  await loadRecommendProducts(false);
+}
+
+async function loadRecommendProducts(reset: boolean) {
+  if (reset) {
+    pageNo.value = 1;
+    finished.value = false;
+    loading.value = true;
+  } else {
+    loadingMore.value = true;
+  }
+
   try {
-    const response = await listRecommendProducts({ pageNo: 1, pageSize: 18 });
-    products.value = response.data.data.records.map(toProductCard);
+    const response = await listRecommendProducts({ pageNo: pageNo.value, pageSize });
+    const pageData = response.data.data;
+    const nextProducts = pageData.records.map((product, index) => {
+      const globalIndex = (pageData.pageNo - 1) * pageData.pageSize + index;
+      return toProductCard(product, globalIndex);
+    });
+
+    total.value = pageData.total;
+    products.value = reset ? nextProducts : [...products.value, ...nextProducts];
+    finished.value = products.value.length >= pageData.total || nextProducts.length === 0;
   } catch {
-    products.value = fallbackProducts;
+    if (reset) {
+      products.value = fallbackProducts;
+      finished.value = true;
+    } else {
+      pageNo.value -= 1;
+    }
     ElMessage.warning('商品接口暂时不可用，已展示本地示例商品');
   } finally {
     loading.value = false;
+    loadingMore.value = false;
+    await nextTick();
+    await ensureEnoughScrollableContent();
+  }
+}
+
+function observeLoadMoreTrigger() {
+  if (!loadMoreTrigger.value) {
+    return;
+  }
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries[0]?.isIntersecting) {
+        loadNextPage();
+      }
+    },
+    {
+      root: null,
+      rootMargin: '240px 0px',
+      threshold: 0
+    }
+  );
+  observer.observe(loadMoreTrigger.value);
+}
+
+async function ensureEnoughScrollableContent() {
+  if (loading.value || loadingMore.value || finished.value) {
+    return;
+  }
+  const pageHeight = document.documentElement.scrollHeight;
+  const viewportHeight = window.innerHeight;
+  if (pageHeight <= viewportHeight + 120) {
+    await loadNextPage();
+  }
+}
+
+function handleWindowScroll() {
+  if (loading.value || loadingMore.value || finished.value) {
+    return;
+  }
+  const scrollTop = window.scrollY || document.documentElement.scrollTop;
+  const viewportHeight = window.innerHeight;
+  const pageHeight = document.documentElement.scrollHeight;
+  if (scrollTop + viewportHeight >= pageHeight - 260) {
+    loadNextPage();
   }
 }
 
@@ -188,15 +202,15 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
           <strong>百亿补贴 · 买贵必赔</strong>
           <div class="deal-products">
             <div>
-              <img alt="矿泉水" src="https://images.unsplash.com/photo-1564419320461-6870880221ad?auto=format&fit=crop&w=240&q=80" />
+              <img alt="家庭饮用水" src="https://images.unsplash.com/photo-1564419320461-6870880221ad?auto=format&fit=crop&w=240&q=80" />
               <span>¥14.9</span>
             </div>
             <div>
-              <img alt="服饰" src="https://images.unsplash.com/photo-1523381294911-8d3cead13475?auto=format&fit=crop&w=240&q=80" />
+              <img alt="服饰背心" src="https://images.unsplash.com/photo-1523381294911-8d3cead13475?auto=format&fit=crop&w=240&q=80" />
               <span>¥53.1</span>
             </div>
             <div>
-              <img alt="纸巾" src="https://images.unsplash.com/photo-1583947215259-38e31be8751f?auto=format&fit=crop&w=240&q=80" />
+              <img alt="家庭纸巾" src="https://images.unsplash.com/photo-1583947215259-38e31be8751f?auto=format&fit=crop&w=240&q=80" />
               <span>¥9.9</span>
             </div>
           </div>
@@ -225,11 +239,21 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
 
     <section class="page-shell product-section">
       <div class="product-heading">
-        <h2 class="section-title">猜你喜欢</h2>
-        <el-button :icon="RefreshRight" :loading="loading" circle @click="loadRecommendProducts" />
+        <div>
+          <h2 class="section-title">猜你喜欢</h2>
+          <span v-if="total" class="total-text">共 {{ total }} 件商品</span>
+        </div>
+        <el-button :icon="RefreshRight" :loading="loading" circle @click="refreshProducts" />
       </div>
+
       <div v-loading="loading" class="product-grid">
         <ProductCard v-for="product in products" :key="product.id" :product="product" />
+      </div>
+
+      <div ref="loadMoreTrigger" class="load-more">
+        <span v-if="loadingMore">正在加载更多商品...</span>
+        <span v-else-if="finished">已经到底啦</span>
+        <span v-else>继续下滑加载更多</span>
       </div>
     </section>
   </main>
@@ -391,10 +415,26 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
   justify-content: space-between;
 }
 
+.total-text {
+  margin-left: 10px;
+  color: #888;
+  font-size: 14px;
+}
+
 .product-grid {
   display: grid;
+  min-height: 240px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 18px;
+}
+
+.load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  color: #888;
+  font-size: 14px;
 }
 
 @media (max-width: 1200px) {

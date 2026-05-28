@@ -7,7 +7,7 @@ const router = useRouter();
 const keyword = ref('');
 
 function searchProducts() {
-  router.push({ path: '/', query: keyword.value ? { keyword: keyword.value } : {} });
+  router.push({ path: router.currentRoute.value.path, query: keyword.value ? { keyword: keyword.value } : {} });
 }
 </script>
 
