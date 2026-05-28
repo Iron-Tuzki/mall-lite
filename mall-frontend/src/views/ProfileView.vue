@@ -5,14 +5,17 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { getOrderDetail, listOrders, type OrderDetail, type OrderMain } from '@/api/order';
+import { getSignInProfile, signInToday, type SignInProfile } from '@/api/user';
 import SiteHeader from '@/components/SiteHeader.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const loading = ref(false);
+const signSubmitting = ref(false);
 const orders = ref<OrderMain[]>([]);
 const orderDetails = ref<Record<number, OrderDetail>>({});
+const signInProfile = ref<SignInProfile | null>(null);
 
 const orderEntries = computed(() => [
   { label: '待支付', count: countByStatus(10) },
@@ -24,10 +27,14 @@ const orderEntries = computed(() => [
 
 const recentOrders = computed(() => orders.value.slice(0, 5));
 const today = new Date();
-const currentMonthLabel = `${today.getFullYear()}年${today.getMonth() + 1}月`;
-const signedDays = [1, 2, 4, 5, 7, 9, 12, 13, 16, 18, 21, 22, 25, 28];
+const currentMonthLabel = computed(() => {
+  const year = signInProfile.value?.year || today.getFullYear();
+  const month = signInProfile.value?.month || today.getMonth() + 1;
+  return `${year}年${month}月`;
+});
 const signCells = computed(() => {
-  const days = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const days = signInProfile.value?.daysInMonth || new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const signedDays = signInProfile.value?.signedDays || [];
   return Array.from({ length: days }, (_, index) => {
     const day = index + 1;
     const signed = signedDays.includes(day);
@@ -38,18 +45,9 @@ const signCells = computed(() => {
     };
   });
 });
-const signedCount = computed(() => signCells.value.filter((cell) => cell.signed).length);
-const continuousSignDays = computed(() => {
-  let count = 0;
-  const day = today.getDate();
-  for (let current = day; current >= 1; current -= 1) {
-    if (!signedDays.includes(current)) {
-      break;
-    }
-    count += 1;
-  }
-  return count;
-});
+const signedCount = computed(() => signInProfile.value?.monthSignedCount || 0);
+const continuousSignDays = computed(() => signInProfile.value?.continuousSignedDays || 0);
+const todaySigned = computed(() => Boolean(signInProfile.value?.todaySigned));
 const browsingFootprints = [
   {
     id: 910037,
@@ -97,7 +95,7 @@ onMounted(async () => {
     if (!authStore.user) {
       await authStore.fetchCurrentUser();
     }
-    await loadOrders();
+    await Promise.all([loadOrders(), loadSignInProfile()]);
   } catch (error) {
     ElMessage.warning(error instanceof Error ? error.message : '请重新登录');
     await router.replace({ path: '/login', query: { redirect: '/profile' } });
@@ -116,6 +114,14 @@ async function loadOrders() {
   }
   orders.value = response.data.data;
   await loadRecentOrderDetails();
+}
+
+async function loadSignInProfile() {
+  const response = await getSignInProfile();
+  if (!response.data.success) {
+    throw new Error(response.data.message || '签到记录加载失败');
+  }
+  signInProfile.value = response.data.data;
 }
 
 async function loadRecentOrderDetails() {
@@ -186,6 +192,22 @@ function getRecentOrderTitle(order: OrderMain) {
 
 function getRecentOrderImage(order: OrderMain) {
   return orderDetails.value[order.orderId]?.items?.[0]?.mainImageUrl || 'https://images.unsplash.com/photo-1557821552-17105176677c?auto=format&fit=crop&w=240&q=80';
+}
+
+async function handleSignIn() {
+  signSubmitting.value = true;
+  try {
+    const response = await signInToday();
+    if (!response.data.success) {
+      throw new Error(response.data.message || '签到失败');
+    }
+    signInProfile.value = response.data.data;
+    ElMessage.success(response.data.data.todaySigned ? '签到成功，今日已点亮' : '签到成功');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '签到失败');
+  } finally {
+    signSubmitting.value = false;
+  }
 }
 
 async function handleLogout() {
@@ -306,9 +328,10 @@ async function handleLogout() {
           <div class="section-head">
             <div>
               <h2>本月签到记录</h2>
-              <p>后续接 Redis Bitmap 记录每日签到</p>
             </div>
-            <el-button round type="primary">今日签到</el-button>
+            <el-button round :disabled="todaySigned" :loading="signSubmitting" type="primary" @click="handleSignIn">
+              {{ todaySigned ? '今日已签到' : '今日签到' }}
+            </el-button>
           </div>
           <div class="sign-summary">
             <div>
@@ -332,15 +355,6 @@ async function handleLogout() {
               :class="`level-${cell.level}`"
               :title="`${currentMonthLabel}${cell.day}日：${cell.signed ? '已签到' : '未签到'}`"
             />
-          </div>
-          <div class="heatmap-legend">
-            <span>少</span>
-            <i class="sign-cell level-0" />
-            <i class="sign-cell level-1" />
-            <i class="sign-cell level-2" />
-            <i class="sign-cell level-3" />
-            <i class="sign-cell level-4" />
-            <span>多</span>
           </div>
         </div>
 
@@ -626,10 +640,6 @@ async function handleLogout() {
   font-size: 13px;
 }
 
-.side-column .sign-summary {
-  grid-template-columns: 1fr;
-}
-
 .sign-heatmap {
   display: grid;
   grid-template-columns: repeat(16, 14px);
@@ -666,16 +676,6 @@ async function handleLogout() {
 
 .level-4 {
   background: #ff4d00;
-}
-
-.heatmap-legend {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: 12px;
-  color: #888;
-  font-size: 12px;
 }
 
 .product-activity-section {

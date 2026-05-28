@@ -27,6 +27,16 @@ export interface LoginResult {
   user: UserProfile;
 }
 
+export interface SignInProfile {
+  todaySigned: boolean;
+  monthSignedCount: number;
+  continuousSignedDays: number;
+  year: number;
+  month: number;
+  daysInMonth: number;
+  signedDays: number[];
+}
+
 export function login(request: LoginRequest) {
   return http.post<Result<LoginResult>>('/api/users/login', request);
 }
@@ -37,4 +47,12 @@ export function getCurrentUser() {
 
 export function logout() {
   return http.post<Result<void>>('/api/users/logout');
+}
+
+export function getSignInProfile() {
+  return http.get<Result<SignInProfile>>('/api/users/sign-in/profile');
+}
+
+export function signInToday() {
+  return http.post<Result<SignInProfile>>('/api/users/sign-in');
 }

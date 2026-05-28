@@ -4,8 +4,11 @@ import com.tuzki.mall.common.api.Result;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.user.dto.UserLoginRequest;
 import com.tuzki.mall.user.dto.UserRegisterRequest;
+import com.tuzki.mall.user.service.LoginSessionService;
+import com.tuzki.mall.user.service.SignInService;
 import com.tuzki.mall.user.service.UserService;
 import com.tuzki.mall.user.vo.UserLoginVO;
+import com.tuzki.mall.user.vo.SignInProfileVO;
 import com.tuzki.mall.user.vo.UserVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,8 +31,14 @@ public class UserController {
 
     private final UserService userService;
 
-    public UserController(UserService userService) {
+    private final LoginSessionService loginSessionService;
+
+    private final SignInService signInService;
+
+    public UserController(UserService userService, LoginSessionService loginSessionService, SignInService signInService) {
         this.userService = userService;
+        this.loginSessionService = loginSessionService;
+        this.signInService = signInService;
     }
 
     @PostMapping("/register")
@@ -53,9 +62,28 @@ public class UserController {
         return Result.success();
     }
 
+    @PostMapping("/sign-in")
+    public Result<SignInProfileVO> signInToday(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return Result.success(signInService.signInToday(resolveCurrentUserId(authorization)));
+    }
+
+    @GetMapping("/sign-in/profile")
+    public Result<SignInProfileVO> getSignInProfile(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        return Result.success(signInService.getCurrentMonthProfile(resolveCurrentUserId(authorization)));
+    }
+
     @GetMapping("/{id}")
     public Result<UserVO> getById(@PathVariable Long id) {
         return Result.success(userService.getById(id));
+    }
+
+    private Long resolveCurrentUserId(String authorization) {
+        String token = resolveToken(authorization);
+        Long userId = loginSessionService.getUserId(token);
+        if (userId == null) {
+            throw new BusinessException(401, "invalid login token");
+        }
+        return userId;
     }
 
     private String resolveToken(String authorization) {
