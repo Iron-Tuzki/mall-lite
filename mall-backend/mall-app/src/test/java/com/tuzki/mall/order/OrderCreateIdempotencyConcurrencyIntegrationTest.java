@@ -66,7 +66,11 @@ class OrderCreateIdempotencyConcurrencyIntegrationTest {
             ExecutorService executorService = Executors.newFixedThreadPool(2);
             try {
                 Future<OrderCreateVO> firstFuture = executorService.submit(createOrderTask(startLatch, requestId));
-                Future<OrderCreateVO> secondFuture = executorService.submit(createOrderTask(startLatch, requestId));
+
+                Future<OrderCreateVO> secondFuture = executorService.submit(() -> {
+                        startLatch.await(); // 阻塞等待主线程唤醒后一起跑，模拟并发
+                        return orderService.createOrder(TestSeedData.USER_ID, buildCreateRequest(requestId));
+                });
 
                 startLatch.countDown();
 
