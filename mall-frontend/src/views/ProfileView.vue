@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { getOrderDetail, listOrders, type OrderDetail, type OrderMain } from '@/api/order';
+import { listFavoriteProducts } from '@/api/product';
 import { getSignInProfile, signInToday, type SignInProfile } from '@/api/user';
 import SiteHeader from '@/components/SiteHeader.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -16,6 +17,7 @@ const signSubmitting = ref(false);
 const orders = ref<OrderMain[]>([]);
 const orderDetails = ref<Record<number, OrderDetail>>({});
 const signInProfile = ref<SignInProfile | null>(null);
+const favoriteProducts = ref<Array<{ id: number; title: string; price: number; imageUrl: string }>>([]);
 
 const orderEntries = computed(() => [
   { label: '待支付', count: countByStatus(10) },
@@ -68,34 +70,13 @@ const browsingFootprints = [
     imageUrl: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=300&q=80'
   }
 ];
-const favoriteProducts = [
-  {
-    id: 910021,
-    title: '原木托盘茶点盘',
-    price: 33,
-    imageUrl: 'https://images.unsplash.com/photo-1604014237800-1c9102c219da?auto=format&fit=crop&w=300&q=80'
-  },
-  {
-    id: 910032,
-    title: '家用不锈钢汤锅',
-    price: 118,
-    imageUrl: 'https://images.unsplash.com/photo-1584990347449-a034611cc2b6?auto=format&fit=crop&w=300&q=80'
-  },
-  {
-    id: 910035,
-    title: '日式藤编收纳篮',
-    price: 68,
-    imageUrl: 'https://images.unsplash.com/photo-1596079890701-dd42edf0b7d4?auto=format&fit=crop&w=300&q=80'
-  }
-];
-
 onMounted(async () => {
   loading.value = true;
   try {
     if (!authStore.user) {
       await authStore.fetchCurrentUser();
     }
-    await Promise.all([loadOrders(), loadSignInProfile()]);
+    await Promise.all([loadOrders(), loadSignInProfile(), loadFavoriteProducts()]);
   } catch (error) {
     ElMessage.warning(error instanceof Error ? error.message : '请重新登录');
     await router.replace({ path: '/login', query: { redirect: '/profile' } });
@@ -122,6 +103,19 @@ async function loadSignInProfile() {
     throw new Error(response.data.message || '签到记录加载失败');
   }
   signInProfile.value = response.data.data;
+}
+
+async function loadFavoriteProducts() {
+  const response = await listFavoriteProducts({ limit: 3 });
+  if (!response.data.success) {
+    throw new Error(response.data.message || '收藏商品加载失败');
+  }
+  favoriteProducts.value = response.data.data.map((product) => ({
+    id: product.productId,
+    title: product.name,
+    price: product.minPrice || 0,
+    imageUrl: product.mainImageUrl || 'https://images.unsplash.com/photo-1557821552-17105176677c?auto=format&fit=crop&w=240&q=80'
+  }));
 }
 
 async function loadRecentOrderDetails() {

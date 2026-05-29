@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { ArrowLeft, ShoppingCart } from '@element-plus/icons-vue';
+import { ArrowLeft, ShoppingCart, Star, StarFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { getProductDetail, type ProductDetail, type SkuItem } from '@/api/product';
+import {
+  cancelFavoriteProduct,
+  checkProductFavorite,
+  favoriteProduct,
+  getProductDetail,
+  type ProductDetail,
+  type SkuItem
+} from '@/api/product';
 import SiteHeader from '@/components/SiteHeader.vue';
 import { useAuthStore } from '@/stores/auth';
 
@@ -17,6 +24,8 @@ const product = ref<ProductDetail | null>(null);
 const selectedSkuId = ref<number | null>(null);
 const quantity = ref(1);
 const loading = ref(false);
+const favorited = ref(false);
+const favoriteSubmitting = ref(false);
 
 const selectedSku = computed(() => product.value?.skus.find((sku) => sku.id === selectedSkuId.value) || null);
 const mainImage = computed(() => {
@@ -43,6 +52,7 @@ async function loadProductDetail() {
     const response = await getProductDetail(productId.value);
     product.value = response.data.data;
     selectedSkuId.value = product.value.skus[0]?.id || null;
+    await loadFavoriteStatus();
   } catch {
     product.value = null;
     selectedSkuId.value = null;
@@ -52,8 +62,40 @@ async function loadProductDetail() {
   }
 }
 
+async function loadFavoriteStatus() {
+  if (!authStore.isLoggedIn || !productId.value) {
+    favorited.value = false;
+    return;
+  }
+  const response = await checkProductFavorite(productId.value);
+  favorited.value = Boolean(response.data.data);
+}
+
 function selectSku(sku: SkuItem) {
   selectedSkuId.value = sku.id;
+}
+
+async function toggleFavorite() {
+  if (!authStore.isLoggedIn) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } });
+    return;
+  }
+  favoriteSubmitting.value = true;
+  try {
+    if (favorited.value) {
+      await cancelFavoriteProduct(productId.value);
+      favorited.value = false;
+      ElMessage.success('已取消收藏');
+    } else {
+      await favoriteProduct(productId.value);
+      favorited.value = true;
+      ElMessage.success('收藏成功');
+    }
+  } catch {
+    ElMessage.error('收藏操作失败');
+  } finally {
+    favoriteSubmitting.value = false;
+  }
 }
 
 function buyNow() {
@@ -90,6 +132,15 @@ function buyNow() {
 
         <div class="product-info">
           <el-tag type="danger">商品 ID：{{ productId }}</el-tag>
+          <el-button
+            class="favorite-action"
+            :icon="favorited ? StarFilled : Star"
+            :loading="favoriteSubmitting"
+            round
+            @click="toggleFavorite"
+          >
+            {{ favorited ? '已收藏' : '收藏商品' }}
+          </el-button>
           <h1>{{ product?.name || '商品详情' }}</h1>
           <p class="subtitle">{{ product?.description || product?.subtitle || '商品详情正在加载中' }}</p>
 
@@ -160,6 +211,12 @@ function buyNow() {
 .product-info h1 {
   margin: 18px 0 10px;
   font-size: 30px;
+}
+
+.favorite-action {
+  margin-left: 10px;
+  color: #ff4d00;
+  border-color: #ffd7c4;
 }
 
 .subtitle {

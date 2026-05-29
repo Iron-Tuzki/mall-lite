@@ -4,13 +4,23 @@ import { ElMessage } from 'element-plus';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { listCategories, listProducts, type CategoryItem, type ProductSummary } from '@/api/product';
+import {
+  batchProductFavoriteStatus,
+  cancelFavoriteProduct,
+  favoriteProduct,
+  listCategories,
+  listProducts,
+  type CategoryItem,
+  type ProductSummary
+} from '@/api/product';
 import CategorySidebar from '@/components/CategorySidebar.vue';
 import ProductCard, { type ProductCardData } from '@/components/ProductCard.vue';
 import SiteHeader from '@/components/SiteHeader.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
 
 const fallbackImages = [
   'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=600&q=80',
@@ -72,11 +82,44 @@ async function loadProducts() {
   try {
     const response = await listProducts({ categoryId: categoryId.value });
     products.value = response.data.data.map(toProductCard);
+    await refreshFavoriteStatus();
   } catch {
     products.value = [];
     ElMessage.error('分类商品加载失败');
   } finally {
     loading.value = false;
+  }
+}
+
+async function refreshFavoriteStatus() {
+  if (!authStore.isLoggedIn || products.value.length === 0) {
+    return;
+  }
+  const response = await batchProductFavoriteStatus(products.value.map((product) => product.id));
+  const statusMap = response.data.data;
+  products.value = products.value.map((product) => ({
+    ...product,
+    favorited: statusMap[String(product.id)] ?? false
+  }));
+}
+
+async function handleToggleFavorite(product: ProductCardData) {
+  if (!authStore.isLoggedIn) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } });
+    return;
+  }
+  try {
+    if (product.favorited) {
+      await cancelFavoriteProduct(product.id);
+      product.favorited = false;
+      ElMessage.success('已取消收藏');
+    } else {
+      await favoriteProduct(product.id);
+      product.favorited = true;
+      ElMessage.success('收藏成功');
+    }
+  } catch {
+    ElMessage.error('收藏操作失败');
   }
 }
 
@@ -136,7 +179,12 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
         </div>
 
         <div v-loading="loading" class="product-grid">
-          <ProductCard v-for="product in filteredProducts" :key="product.id" :product="product" />
+          <ProductCard
+            v-for="product in filteredProducts"
+            :key="product.id"
+            :product="product"
+            @toggle-favorite="handleToggleFavorite"
+          />
           <el-empty v-if="!loading && filteredProducts.length === 0" description="暂无符合条件的商品" />
         </div>
       </div>

@@ -32,9 +32,19 @@ export interface ProductDetail extends ProductSummary {
 }
 
 export interface Result<T> {
+  success: boolean;
   code: number;
   message: string;
   data: T;
+}
+
+export interface FavoriteProduct {
+  productId: number;
+  name: string;
+  subtitle: string;
+  mainImageUrl: string;
+  minPrice: number | null;
+  favoriteTime: string;
 }
 
 export interface PageResult<T> {
@@ -69,4 +79,26 @@ export function scrollRecommendProducts(params?: { pageSize?: number; lastSort?:
 
 export function getProductDetail(productId: number) {
   return http.get<Result<ProductDetail>>(`/api/products/${productId}`);
+}
+
+export function favoriteProduct(productId: number) {
+  return http.post<Result<void>>(`/api/product-favorites/${productId}`);
+}
+
+export function cancelFavoriteProduct(productId: number) {
+  return http.delete<Result<void>>(`/api/product-favorites/${productId}`);
+}
+
+export function checkProductFavorite(productId: number) {
+  return http.get<Result<boolean>>('/api/product-favorites/check', { params: { productId } });
+}
+
+export function batchProductFavoriteStatus(productIds: number[]) {
+  return http.get<Result<Record<string, boolean>>>('/api/product-favorites/status', {
+    params: { productIds: productIds.join(',') }
+  });
+}
+
+export function listFavoriteProducts(params?: { limit?: number }) {
+  return http.get<Result<FavoriteProduct[]>>('/api/product-favorites', { params });
 }

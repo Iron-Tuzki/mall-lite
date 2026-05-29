@@ -2,14 +2,24 @@
 import { RefreshRight } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
-import { scrollRecommendProducts, type ProductSummary } from '@/api/product';
+import {
+  batchProductFavoriteStatus,
+  cancelFavoriteProduct,
+  favoriteProduct,
+  scrollRecommendProducts,
+  type ProductSummary
+} from '@/api/product';
 import CategorySidebar from '@/components/CategorySidebar.vue';
 import ProductCard, { type ProductCardData } from '@/components/ProductCard.vue';
 import SiteHeader from '@/components/SiteHeader.vue';
 import UserPanel from '@/components/UserPanel.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const channels = ['天猫', '直播', '企业购', '闪购', '超市', '闲鱼', '国际'];
+const router = useRouter();
+const authStore = useAuthStore();
 
 const fallbackImages = [
   'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?auto=format&fit=crop&w=600&q=80',
@@ -99,6 +109,7 @@ async function loadRecommendProducts(reset: boolean) {
     });
 
     products.value = reset ? nextProducts : [...products.value, ...nextProducts];
+    await refreshFavoriteStatus(nextProducts);
     nextSort.value = pageData.nextSort;
     nextId.value = pageData.nextId;
     finished.value = !pageData.hasMore || nextProducts.length === 0;
@@ -113,6 +124,38 @@ async function loadRecommendProducts(reset: boolean) {
     loadingMore.value = false;
     await nextTick();
     await ensureEnoughScrollableContent();
+  }
+}
+
+async function refreshFavoriteStatus(targetProducts = products.value) {
+  if (!authStore.isLoggedIn || targetProducts.length === 0) {
+    return;
+  }
+  const response = await batchProductFavoriteStatus(targetProducts.map((product) => product.id));
+  const statusMap = response.data.data;
+  products.value = products.value.map((product) => ({
+    ...product,
+    favorited: statusMap[String(product.id)] ?? product.favorited
+  }));
+}
+
+async function handleToggleFavorite(product: ProductCardData) {
+  if (!authStore.isLoggedIn) {
+    await router.push({ path: '/login', query: { redirect: '/' } });
+    return;
+  }
+  try {
+    if (product.favorited) {
+      await cancelFavoriteProduct(product.id);
+      product.favorited = false;
+      ElMessage.success('已取消收藏');
+    } else {
+      await favoriteProduct(product.id);
+      product.favorited = true;
+      ElMessage.success('收藏成功');
+    }
+  } catch {
+    ElMessage.error('收藏操作失败');
   }
 }
 
@@ -250,7 +293,12 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
       </div>
 
       <div v-loading="loading" class="product-grid">
-        <ProductCard v-for="product in products" :key="product.id" :product="product" />
+        <ProductCard
+          v-for="product in products"
+          :key="product.id"
+          :product="product"
+          @toggle-favorite="handleToggleFavorite"
+        />
       </div>
 
       <div ref="loadMoreTrigger" class="load-more">
