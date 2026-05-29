@@ -301,7 +301,7 @@ async function handleLogout() {
                 <h2>商品收藏</h2>
                 <p>后续可用收藏表或 Redis Set 做快速判断</p>
               </div>
-              <button class="plain-link" type="button">全部收藏 <el-icon><ArrowRight /></el-icon></button>
+              <button class="plain-link" type="button" @click="router.push('/favorites')">全部收藏 <el-icon><ArrowRight /></el-icon></button>
             </div>
             <div class="activity-list">
               <article v-for="product in favoriteProducts" :key="product.id" class="activity-card">

@@ -65,6 +65,20 @@ public interface ProductFavoriteMapper extends BaseMapper<ProductFavorite> {
     List<ProductFavoriteVO> listFavorites(@Param("userId") Long userId, @Param("limit") int limit);
 
     /**
+     * 查询用户所有未删除收藏的商品 ID，用于重建 Redis 收藏集合缓存。
+     *
+     * @param userId 用户 ID
+     * @return 收藏商品 ID 列表
+     */
+    @Select("""
+            SELECT product_id
+            FROM pms_product_favorite
+            WHERE user_id = #{userId}
+              AND deleted = 0
+            """)
+    List<Long> selectFavoriteProductIdsByUser(@Param("userId") Long userId);
+
+    /**
      * 查询用户已收藏的商品 ID。
      *
      * @param userId 用户 ID

@@ -6,11 +6,16 @@ import com.tuzki.mall.product.entity.Product;
 import com.tuzki.mall.product.entity.ProductFavorite;
 import com.tuzki.mall.product.mapper.ProductFavoriteMapper;
 import com.tuzki.mall.product.mapper.ProductMapper;
+import com.tuzki.mall.product.service.ProductFavoriteCacheService;
 import com.tuzki.mall.product.service.ProductFavoriteService;
 import com.tuzki.mall.product.vo.ProductFavoriteVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.LinkedHashMap;
 import java.util.HashSet;
@@ -24,6 +29,8 @@ import java.util.Set;
 @Service
 public class ProductFavoriteServiceImpl implements ProductFavoriteService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProductFavoriteServiceImpl.class);
+
     private static final int ACTIVE_STATUS = 1;
 
     private static final int NOT_DELETED = 0;
@@ -36,9 +43,14 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
 
     private final ProductMapper productMapper;
 
-    public ProductFavoriteServiceImpl(ProductFavoriteMapper productFavoriteMapper, ProductMapper productMapper) {
+    private final ProductFavoriteCacheService productFavoriteCacheService;
+
+    public ProductFavoriteServiceImpl(ProductFavoriteMapper productFavoriteMapper,
+                                      ProductMapper productMapper,
+                                      ProductFavoriteCacheService productFavoriteCacheService) {
         this.productFavoriteMapper = productFavoriteMapper;
         this.productMapper = productMapper;
+        this.productFavoriteCacheService = productFavoriteCacheService;
     }
 
     @Override
@@ -55,12 +67,14 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
         } catch (DuplicateKeyException exception) {
             // 同一用户重复收藏同一商品时保持幂等，唯一索引负责兜底防重。
         }
+        runAfterCommit(() -> refreshFavoriteCacheAfterCommit(userId, productId, true));
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void cancelFavorite(Long userId, Long productId) {
         productFavoriteMapper.cancelFavorite(userId, productId);
+        runAfterCommit(() -> refreshFavoriteCacheAfterCommit(userId, productId, false));
     }
 
     @Override
@@ -68,11 +82,15 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
         if (userId == null || productId == null) {
             return false;
         }
-        Long count = productFavoriteMapper.selectCount(new LambdaQueryWrapper<ProductFavorite>()
-                .eq(ProductFavorite::getUserId, userId)
-                .eq(ProductFavorite::getProductId, productId)
-                .eq(ProductFavorite::getDeleted, NOT_DELETED));
-        return count != null && count > 0;
+        if (ensureFavoriteCacheLoaded(userId)) {
+            try {
+                return productFavoriteCacheService.contains(userId, productId);
+            } catch (RuntimeException exception) {
+                LOGGER.warn("query favorite cache failed, userId={}, productId={}", userId, productId, exception);
+                invalidateFavoriteLoadedQuietly(userId);
+            }
+        }
+        return isFavoritedFromDb(userId, productId);
     }
 
     @Override
@@ -91,6 +109,15 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
             return result;
         }
 
+        if (ensureFavoriteCacheLoaded(userId)) {
+            try {
+                return productFavoriteCacheService.batchContains(userId, distinctProductIds);
+            } catch (RuntimeException exception) {
+                LOGGER.warn("batch query favorite cache failed, userId={}", userId, exception);
+                invalidateFavoriteLoadedQuietly(userId);
+            }
+        }
+
         Set<Long> favoritedProductIds = new HashSet<>(productFavoriteMapper.selectFavoritedProductIds(userId, distinctProductIds));
         result.replaceAll((productId, ignored) -> favoritedProductIds.contains(productId));
         return result;
@@ -98,6 +125,7 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
 
     @Override
     public List<ProductFavoriteVO> listFavorites(Long userId, Integer limit) {
+        ensureFavoriteCacheLoaded(userId);
         int safeLimit = limit == null || limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
         return productFavoriteMapper.listFavorites(userId, safeLimit);
     }
@@ -110,5 +138,62 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
         if (product == null) {
             throw new BusinessException(404, "product not found");
         }
+    }
+
+    private boolean ensureFavoriteCacheLoaded(Long userId) {
+        try {
+            if (productFavoriteCacheService.isLoaded(userId)) {
+                return true;
+            }
+            List<Long> favoriteProductIds = productFavoriteMapper.selectFavoriteProductIdsByUser(userId);
+            productFavoriteCacheService.rebuild(userId, favoriteProductIds);
+            return true;
+        } catch (RuntimeException exception) {
+            LOGGER.warn("rebuild favorite cache failed, userId={}", userId, exception);
+            invalidateFavoriteLoadedQuietly(userId);
+            return false;
+        }
+    }
+
+    private boolean isFavoritedFromDb(Long userId, Long productId) {
+        Long count = productFavoriteMapper.selectCount(new LambdaQueryWrapper<ProductFavorite>()
+                .eq(ProductFavorite::getUserId, userId)
+                .eq(ProductFavorite::getProductId, productId)
+                .eq(ProductFavorite::getDeleted, NOT_DELETED));
+        return count != null && count > 0;
+    }
+
+    private void refreshFavoriteCacheAfterCommit(Long userId, Long productId, boolean favorite) {
+        try {
+            if (favorite) {
+                productFavoriteCacheService.addIfLoaded(userId, productId);
+            } else {
+                productFavoriteCacheService.removeIfLoaded(userId, productId);
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.warn("refresh favorite cache failed, userId={}, productId={}", userId, productId, exception);
+            invalidateFavoriteLoadedQuietly(userId);
+        }
+    }
+
+    private void invalidateFavoriteLoadedQuietly(Long userId) {
+        try {
+            productFavoriteCacheService.invalidateLoaded(userId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("invalidate favorite loaded cache failed, userId={}", userId, exception);
+        }
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 }
