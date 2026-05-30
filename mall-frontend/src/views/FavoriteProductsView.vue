@@ -73,8 +73,6 @@ function getProductImage(product: FavoriteProduct) {
       <el-button :icon="ArrowLeft" text @click="router.push('/profile')">返回个人主页</el-button>
       <div>
         <span><el-icon><StarFilled /></el-icon> 我的收藏</span>
-        <h1>商品收藏</h1>
-        <p>集中管理你收藏过的商品，后续详情页和列表页的收藏状态也会复用同一份 Redis 缓存。</p>
       </div>
     </section>
 
@@ -82,7 +80,6 @@ function getProductImage(product: FavoriteProduct) {
       <div class="section-head">
         <div>
           <h2>收藏商品</h2>
-          <p>进入本页会调用收藏列表接口，后端会在缓存未加载时重建收藏 Set。</p>
         </div>
         <strong>共 {{ favorites.length }} 件</strong>
       </div>

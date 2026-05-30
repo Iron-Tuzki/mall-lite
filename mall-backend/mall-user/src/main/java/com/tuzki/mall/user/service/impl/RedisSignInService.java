@@ -1,6 +1,7 @@
 package com.tuzki.mall.user.service.impl;
 
 import com.tuzki.mall.user.service.SignInService;
+import com.tuzki.mall.user.service.CouponRewardService;
 import com.tuzki.mall.user.vo.SignInProfileVO;
 import org.redisson.api.RBitSet;
 import org.redisson.api.RedissonClient;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -27,18 +29,29 @@ public class RedisSignInService implements SignInService {
 
     private final RedissonClient redissonClient;
 
-    public RedisSignInService(RedissonClient redissonClient) {
+    private final CouponRewardService couponRewardService;
+
+    public RedisSignInService(RedissonClient redissonClient, CouponRewardService couponRewardService) {
         this.redissonClient = redissonClient;
+        this.couponRewardService = couponRewardService;
     }
 
     @Override
     public SignInProfileVO signInToday(Long userId) {
         LocalDate today = LocalDate.now(BUSINESS_ZONE);
         RBitSet bitSet = getCurrentMonthBitSet(userId, today);
+        boolean alreadySigned = bitSet.get(today.getDayOfMonth() - 1L);
         // Bitmap 写 1 天然幂等，重复签到不会改变已有记录；后续接积分时可使用返回旧值判断是否首次签到。
         bitSet.set(today.getDayOfMonth() - 1L, true);
         bitSet.expire(Duration.ofDays(400));
-        return buildProfile(bitSet, today);
+        SignInProfileVO profile = buildProfile(bitSet, today);
+        if (!alreadySigned) {
+            couponRewardService.issueSignInContinuousRewards(
+                    userId,
+                    profile.getContinuousSignedDays(),
+                    YearMonth.from(today));
+        }
+        return profile;
     }
 
     @Override

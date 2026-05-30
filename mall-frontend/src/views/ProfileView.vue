@@ -299,7 +299,6 @@ async function handleLogout() {
             <div class="section-head">
               <div>
                 <h2>商品收藏</h2>
-                <p>后续可用收藏表或 Redis Set 做快速判断</p>
               </div>
               <button class="plain-link" type="button" @click="router.push('/favorites')">全部收藏 <el-icon><ArrowRight /></el-icon></button>
             </div>
@@ -330,15 +329,15 @@ async function handleLogout() {
           <div class="sign-summary">
             <div>
               <strong>{{ signedCount }}</strong>
-              <span>{{ currentMonthLabel }}已签到</span>
+              <span>{{ currentMonthLabel }}已签</span>
             </div>
             <div>
               <strong>{{ continuousSignDays }}</strong>
-              <span>连续签到</span>
+              <span>本月连签</span>
             </div>
             <div>
               <strong>{{ signCells.length - signedCount }}</strong>
-              <span>本月待点亮</span>
+              <span>本月待签</span>
             </div>
           </div>
           <div class="sign-heatmap" aria-label="本月签到热力图">
