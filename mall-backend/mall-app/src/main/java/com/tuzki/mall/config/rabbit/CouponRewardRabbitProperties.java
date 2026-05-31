@@ -10,9 +10,9 @@ public class CouponRewardRabbitProperties {
 
     private String couponRewardExchange = "mall.coupon-reward.exchange";
 
-    private String couponRewardQueue = "mall.coupon.queue";
+    private String couponRewardQueue = "mall.coupon-reward.queue";
 
-    private String couponRewardRoutingKey = "mall.coupon.routing-key";
+    private String couponRewardRoutingKey = "mall.coupon-reward.routing-key";
 
     private String failedExchange = "mall.coupon.failed.exchange";
 

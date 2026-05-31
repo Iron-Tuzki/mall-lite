@@ -4,8 +4,6 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
-import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -33,7 +31,7 @@ public class CouponRabbitConfig {
      * @return 订单超时消息延迟交换机
      */
     @Bean
-    public DirectExchange couponExchange(CouponRewardRabbitProperties properties) {
+    public DirectExchange couponRewardExchange(CouponRewardRabbitProperties properties) {
         return new DirectExchange(properties.getCouponRewardExchange(), true, false);
     }
 
@@ -41,7 +39,7 @@ public class CouponRabbitConfig {
      * 创建发放优惠券的队列。
      */
     @Bean
-    public Queue couponQueue(CouponRewardRabbitProperties properties) {
+    public Queue couponRewardQueue(CouponRewardRabbitProperties properties) {
         return new Queue(properties.getCouponRewardQueue(), true, false, false, Map.of(
                 DEAD_LETTER_EXCHANGE_ARGUMENT, properties.getFailedExchange(),
                 DEAD_LETTER_ROUTING_KEY_ARGUMENT, properties.getFailedRoutingKey(),
@@ -54,11 +52,11 @@ public class CouponRabbitConfig {
      *
      */
     @Bean
-    public Binding couponBinding(@Qualifier("couponQueue") Queue couponQueue,
-                                     @Qualifier("couponExchange") DirectExchange couponExchange,
+    public Binding couponRewardBinding(@Qualifier("couponRewardQueue") Queue couponRewardQueue,
+                                     @Qualifier("couponRewardExchange") DirectExchange couponRewardExchange,
                                      CouponRewardRabbitProperties properties) {
-        return BindingBuilder.bind(couponQueue)
-                .to(couponExchange)
+        return BindingBuilder.bind(couponRewardQueue)
+                .to(couponRewardExchange)
                 .with(properties.getCouponRewardRoutingKey());
     }
 
@@ -90,6 +88,7 @@ public class CouponRabbitConfig {
                 .to(couponFailedExchange)
                 .with(properties.getFailedRoutingKey());
     }
+
 
 
     private Integer toMilliseconds(Integer timeoutMinutes) {
