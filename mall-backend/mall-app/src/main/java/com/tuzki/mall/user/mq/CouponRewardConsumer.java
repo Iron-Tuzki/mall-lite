@@ -22,7 +22,7 @@ public class CouponRewardConsumer {
      *
      * @param message 订单超时检查消息，包含需要检查的订单 ID
      */
-    @RabbitListener(queues = "${mall.coupon.rabbit.coupon-queue}")
+    @RabbitListener(queues = "${mall.coupon.rabbit.coupon-reward-queue}")
     public void handle(CouponRewardMessage message) {
         couponRewardService.issueSignInContinuousRewards(message.getUserId(), message.getContinuousSignedDays(), message.getRewardMonth());
     }
