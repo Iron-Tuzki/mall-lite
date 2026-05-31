@@ -20,11 +20,11 @@ const signInProfile = ref<SignInProfile | null>(null);
 const favoriteProducts = ref<Array<{ id: number; title: string; price: number; imageUrl: string }>>([]);
 
 const orderEntries = computed(() => [
-  { label: '待支付', count: countByStatus(10) },
-  { label: '待发货', count: countByStatus(20) },
-  { label: '待收货', count: 0 },
-  { label: '已完成', count: countByStatus(40) },
-  { label: '已取消', count: countByStatus(30) }
+  { label: '待支付', status: 10, count: countByStatus(10) },
+  { label: '待发货', status: 20, count: countByStatus(20) },
+  { label: '待收货', status: 25, count: 0 },
+  { label: '已完成', status: 40, count: countByStatus(40) },
+  { label: '已取消', status: 30, count: countByStatus(30) }
 ]);
 
 const recentOrders = computed(() => orders.value.slice(0, 5));
@@ -89,7 +89,7 @@ async function loadOrders() {
   if (!authStore.user?.id) {
     return;
   }
-  const response = await listOrders(authStore.user.id);
+  const response = await listOrders();
   if (!response.data.success) {
     throw new Error(response.data.message || '订单列表加载失败');
   }
@@ -264,10 +264,10 @@ async function handleLogout() {
               <h2>我的订单</h2>
               <p>按状态快速查看订单进度</p>
             </div>
-            <button class="plain-link" type="button">全部订单 <el-icon><ArrowRight /></el-icon></button>
+            <button class="plain-link" type="button" @click="router.push('/orders')">全部订单 <el-icon><ArrowRight /></el-icon></button>
           </div>
           <div class="order-status-grid">
-            <button v-for="entry in orderEntries" :key="entry.label" type="button">
+            <button v-for="entry in orderEntries" :key="entry.label" type="button" @click="router.push({ path: '/orders', query: { status: entry.status } })">
               <strong>{{ entry.count }}</strong>
               <span>{{ entry.label }}</span>
             </button>

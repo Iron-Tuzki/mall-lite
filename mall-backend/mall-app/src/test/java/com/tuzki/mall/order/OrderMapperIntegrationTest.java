@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -88,6 +89,20 @@ class OrderMapperIntegrationTest {
         assertEquals(0, secondAffectedRows);
         assertEquals(20, currentOrder.getStatus());
         assertNotNull(currentOrder.getPayTime());
+    }
+
+    @Test
+    void listOrdersCanFilterByStatusAndCreateTimeRange() {
+        Order order = buildPendingOrder("ORDER-FILTER-");
+        orderMapper.insert(order);
+
+        List<?> orders = orderMapper.listOrders(
+                order.getUserId(),
+                10,
+                LocalDateTime.now().minusMinutes(1),
+                LocalDateTime.now().plusMinutes(1));
+
+        assertEquals(1, orders.size());
     }
 
     private Order buildPendingOrder(String orderNoPrefix) {

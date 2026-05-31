@@ -3,7 +3,6 @@ package com.tuzki.mall.order.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.vo.OrderMainVO;
-import jakarta.validation.Valid;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -95,22 +94,45 @@ public interface OrderMapper extends BaseMapper<Order> {
             """)
     Order selectByIdForUpdate(@Param("orderId") Long orderId);
 
+    /**
+     * 根据用户、订单状态和下单时间范围查询订单列表。
+     *
+     * @param userId 用户 ID
+     * @param status 订单状态，为 null 时查询全部状态
+     * @param startTime 下单时间范围开始值，为 null 时不限制开始时间
+     * @param endTime 下单时间范围结束值，为 null 时不限制结束时间
+     * @return 按创建时间倒序排列的订单主信息列表
+     */
     @Select("""
-                select id as orderId,
-                             order_no,
-                             request_id,
-                             user_id,
-                             total_amount,
-                             pay_amount,
-                             freight_amount,
-                             status,
-                             cancel_type,
-                             cancel_reason,
-                             create_time
-                      from oms_order
-                      where user_id = #{userId}
-                        and deleted = 0
-                      order by create_time desc
+            <script>
+            SELECT id AS orderId,
+                   order_no,
+                   request_id,
+                   user_id,
+                   total_amount,
+                   pay_amount,
+                   freight_amount,
+                   status,
+                   cancel_type,
+                   cancel_reason,
+                   create_time
+            FROM oms_order
+            WHERE user_id = #{userId}
+              AND deleted = 0
+            <if test="status != null">
+              AND status = #{status}
+            </if>
+            <if test="startTime != null">
+              AND create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+              AND create_time &lt;= #{endTime}
+            </if>
+            ORDER BY create_time DESC
+            </script>
             """)
-    List<OrderMainVO> listOrders(@Valid @Param("userId") Long userId);
+    List<OrderMainVO> listOrders(@Param("userId") Long userId,
+                                 @Param("status") Integer status,
+                                 @Param("startTime") LocalDateTime startTime,
+                                 @Param("endTime") LocalDateTime endTime);
 }

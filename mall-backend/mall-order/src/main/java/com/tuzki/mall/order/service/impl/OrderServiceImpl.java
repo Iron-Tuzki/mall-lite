@@ -184,8 +184,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public List<OrderMainVO> listOrders(Long userId) {
-        return orderMapper.listOrders(userId);
+    public List<OrderMainVO> listOrders(Long userId, Integer status, LocalDateTime startTime, LocalDateTime endTime) {
+        return orderMapper.listOrders(userId, status, startTime, endTime);
     }
 
     private User getActiveUser(Long userId) {

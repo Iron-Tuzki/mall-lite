@@ -5,6 +5,7 @@ import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.order.vo.OrderDetailVO;
 import com.tuzki.mall.order.vo.OrderMainVO;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -49,5 +50,14 @@ public interface OrderService {
      * @param userId 用户 ID
      * @return 订单主信息列表
      */
-    List<OrderMainVO> listOrders(Long userId);
+    /**
+     * 查询指定用户的订单列表，并按可选条件筛选。
+     *
+     * @param userId 用户 ID
+     * @param status 订单状态，为 null 时查询全部状态
+     * @param startTime 下单时间范围开始值，为 null 时不限制开始时间
+     * @param endTime 下单时间范围结束值，为 null 时不限制结束时间
+     * @return 订单主信息列表
+     */
+    List<OrderMainVO> listOrders(Long userId, Integer status, LocalDateTime startTime, LocalDateTime endTime);
 }

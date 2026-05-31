@@ -87,8 +87,8 @@ export function getOrderDetail(orderId: number) {
   return http.get<Result<OrderDetail>>(`/api/orders/${orderId}`);
 }
 
-export function listOrders(userId: number) {
-  return http.get<Result<OrderMain[]>>('/api/orders', { params: { userId } });
+export function listOrders(params?: { status?: number; startTime?: string; endTime?: string }) {
+  return http.get<Result<OrderMain[]>>('/api/orders', { params });
 }
 
 export function payOrder(orderId: number) {

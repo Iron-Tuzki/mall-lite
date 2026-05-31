@@ -11,6 +11,7 @@ import com.tuzki.mall.payment.service.PaymentService;
 import com.tuzki.mall.payment.vo.PaymentPayVO;
 import com.tuzki.mall.user.service.LoginSessionService;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -70,8 +72,18 @@ public class OrderController {
     }
 
     @GetMapping
-    public Result<List<OrderMainVO>> listOrders(@RequestParam Long userId) {
-        return Result.success(orderService.listOrders(userId));
+    public Result<List<OrderMainVO>> listOrders(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
+        return Result.success(orderService.listOrders(
+                resolveCurrentUserId(authorization),
+                status,
+                startTime,
+                endTime));
     }
 
     private Long resolveCurrentUserId(String authorization) {
