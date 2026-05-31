@@ -5,6 +5,7 @@ import com.tuzki.mall.user.entity.CouponTemplate;
 import com.tuzki.mall.user.entity.UserCoupon;
 import com.tuzki.mall.user.mapper.CouponTemplateMapper;
 import com.tuzki.mall.user.mapper.UserCouponMapper;
+import com.tuzki.mall.user.message.CouponRewardMessage;
 import com.tuzki.mall.user.service.CouponRewardService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -58,6 +59,12 @@ public class CouponRewardServiceImpl implements CouponRewardService {
                 issueSignInReward(userId, rewardMonth, requiredDays, templateId);
             }
         });
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void issueSignInContinuousRewards4MQ(CouponRewardMessage message) {
+        issueSignInReward(message.getUserId(), message.getRewardMonth(), message.getRequiredDays(), message.getTemplateId());
     }
 
     private void issueSignInReward(Long userId, YearMonth rewardMonth, int requiredDays, Long templateId) {

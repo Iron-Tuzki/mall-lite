@@ -24,6 +24,6 @@ public class CouponRewardConsumer {
      */
     @RabbitListener(queues = "${mall.coupon.rabbit.coupon-reward-queue}")
     public void handle(CouponRewardMessage message) {
-        couponRewardService.issueSignInContinuousRewards(message.getUserId(), message.getContinuousSignedDays(), message.getRewardMonth());
+        couponRewardService.issueSignInContinuousRewards4MQ(message);
     }
 }

@@ -1,5 +1,7 @@
 package com.tuzki.mall.user.service;
 
+import com.tuzki.mall.user.message.CouponRewardMessage;
+
 import java.time.YearMonth;
 
 /**
@@ -15,4 +17,11 @@ public interface CouponRewardService {
      * @param rewardMonth 奖励所属月份，用于生成月度幂等来源键
      */
     void issueSignInContinuousRewards(Long userId, int continuousSignedDays, YearMonth rewardMonth);
+
+
+    /**
+     * 根据用户连续签到天数发放签到奖励优惠券。mq使用
+     */
+    void issueSignInContinuousRewards4MQ(CouponRewardMessage message);
+
 }

@@ -21,6 +21,16 @@ public class CouponRewardMessage implements Serializable {
 
     private YearMonth rewardMonth;
 
+    /**
+     * 签到奖励所需天数
+     */
+    private Integer requiredDays;
+
+    /**
+     * 消费券ID
+     */
+    private Long templateId;
+
     public Long getUserId() {
         return userId;
     }
@@ -43,5 +53,21 @@ public class CouponRewardMessage implements Serializable {
 
     public void setRewardMonth(YearMonth rewardMonth) {
         this.rewardMonth = rewardMonth;
+    }
+
+    public Integer getRequiredDays() {
+        return requiredDays;
+    }
+
+    public void setRequiredDays(Integer requiredDays) {
+        this.requiredDays = requiredDays;
+    }
+
+    public Long getTemplateId() {
+        return templateId;
+    }
+
+    public void setTemplateId(Long templateId) {
+        this.templateId = templateId;
     }
 }

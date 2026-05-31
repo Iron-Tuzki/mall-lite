@@ -14,7 +14,9 @@ import java.time.ZoneId;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 基于 Redisson Bitmap 的用户签到服务实现，用一个 Redis Bitmap 记录用户单月每日签到状态。
@@ -32,6 +34,14 @@ public class RedisSignInService implements SignInService {
 
     private final CouponRewardMessageSender couponRewardMessageSender;
 
+
+    private static final Map<Integer, Long> SIGN_IN_REWARD_TEMPLATES = new LinkedHashMap<>();
+
+    static {
+        SIGN_IN_REWARD_TEMPLATES.put(7, 700001L);
+        SIGN_IN_REWARD_TEMPLATES.put(15, 700002L);
+    }
+
     public RedisSignInService(RedissonClient redissonClient, CouponRewardMessageSender couponRewardMessageSender) {
         this.redissonClient = redissonClient;
         this.couponRewardMessageSender = couponRewardMessageSender;
@@ -47,8 +57,12 @@ public class RedisSignInService implements SignInService {
         bitSet.expire(Duration.ofDays(400));
         SignInProfileVO profile = buildProfile(bitSet, today);
         if (!alreadySigned) {
-            // sugus:使用MQ发放优惠券
-            couponRewardMessageSender.send(buildCouponRewardMessage(userId, profile, today));
+            // sugus:当连续签到日期大于某个数值，则使用消息队列发放优惠券
+            SIGN_IN_REWARD_TEMPLATES.forEach((requiredDays, templateId) -> {
+                if (profile.getContinuousSignedDays() >= requiredDays) {
+                    couponRewardMessageSender.send(buildCouponRewardMessage(userId, profile, today, requiredDays, templateId));
+                }
+            });
         }
         return profile;
     }
@@ -99,11 +113,13 @@ public class RedisSignInService implements SignInService {
         return redissonClient.getBitSet(buildKey(userId, today));
     }
 
-    private CouponRewardMessage buildCouponRewardMessage(Long userId, SignInProfileVO profile, LocalDate today) {
+    private CouponRewardMessage buildCouponRewardMessage(Long userId, SignInProfileVO profile, LocalDate today, Integer requiredDays, Long templateId) {
         CouponRewardMessage message = new CouponRewardMessage();
         message.setUserId(userId);
         message.setContinuousSignedDays(profile.getContinuousSignedDays());
         message.setRewardMonth(YearMonth.from(today));
+        message.setRequiredDays(requiredDays);
+        message.setTemplateId(templateId);
         return message;
     }
 
