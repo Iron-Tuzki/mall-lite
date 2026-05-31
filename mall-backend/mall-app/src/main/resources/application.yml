@@ -64,3 +64,12 @@ mall:
       failed-queue: mall.order.failed.queue
       failed-routing-key: mall.order.failed.routing-key
       timeout-minutes: 30
+  coupon:
+    rabbit:
+      coupon-reward-exchange: mall.coupon-reward.exchange
+      coupon-reward-queue: mall.coupon-reward.queue
+      coupon-reward-routing-key: mall.coupon-reward.routing-key
+      failed-exchange: mall.coupon.failed.exchange
+      failed-queue: mall.coupon.failed.queue
+      failed-routing-key: mall.coupon.failed.routing-key
+      timeout-minutes: 30

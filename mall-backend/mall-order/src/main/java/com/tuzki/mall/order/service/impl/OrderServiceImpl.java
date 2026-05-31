@@ -144,6 +144,7 @@ public class OrderServiceImpl implements OrderService {
             orderItemMapper.insert(orderItem);
         }
         markOrderRequestSuccess(userId, request.getRequestId(), order.getId());
+        // sugus:订单事务提交后，发送定时取消的消息
         registerOrderTimeoutMessageAfterCommit(order);
 
         return toCreateVO(order);

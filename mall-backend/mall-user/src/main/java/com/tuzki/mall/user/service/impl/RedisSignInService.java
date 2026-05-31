@@ -1,7 +1,8 @@
 package com.tuzki.mall.user.service.impl;
 
+import com.tuzki.mall.user.message.CouponRewardMessage;
+import com.tuzki.mall.user.message.CouponRewardMessageSender;
 import com.tuzki.mall.user.service.SignInService;
-import com.tuzki.mall.user.service.CouponRewardService;
 import com.tuzki.mall.user.vo.SignInProfileVO;
 import org.redisson.api.RBitSet;
 import org.redisson.api.RedissonClient;
@@ -29,11 +30,11 @@ public class RedisSignInService implements SignInService {
 
     private final RedissonClient redissonClient;
 
-    private final CouponRewardService couponRewardService;
+    private final CouponRewardMessageSender couponRewardMessageSender;
 
-    public RedisSignInService(RedissonClient redissonClient, CouponRewardService couponRewardService) {
+    public RedisSignInService(RedissonClient redissonClient, CouponRewardMessageSender couponRewardMessageSender) {
         this.redissonClient = redissonClient;
-        this.couponRewardService = couponRewardService;
+        this.couponRewardMessageSender = couponRewardMessageSender;
     }
 
     @Override
@@ -46,10 +47,8 @@ public class RedisSignInService implements SignInService {
         bitSet.expire(Duration.ofDays(400));
         SignInProfileVO profile = buildProfile(bitSet, today);
         if (!alreadySigned) {
-            couponRewardService.issueSignInContinuousRewards(
-                    userId,
-                    profile.getContinuousSignedDays(),
-                    YearMonth.from(today));
+            // sugus:使用MQ发放优惠券
+            couponRewardMessageSender.send(buildCouponRewardMessage(userId, profile, today));
         }
         return profile;
     }
@@ -98,6 +97,14 @@ public class RedisSignInService implements SignInService {
 
     private RBitSet getCurrentMonthBitSet(Long userId, LocalDate today) {
         return redissonClient.getBitSet(buildKey(userId, today));
+    }
+
+    private CouponRewardMessage buildCouponRewardMessage(Long userId, SignInProfileVO profile, LocalDate today) {
+        CouponRewardMessage message = new CouponRewardMessage();
+        message.setUserId(userId);
+        message.setContinuousSignedDays(profile.getContinuousSignedDays());
+        message.setRewardMonth(YearMonth.from(today));
+        return message;
     }
 
     private String buildKey(Long userId, LocalDate date) {
