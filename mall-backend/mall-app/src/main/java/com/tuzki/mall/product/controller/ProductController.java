@@ -4,10 +4,16 @@ import com.tuzki.mall.common.api.CursorPageResult;
 import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.api.Result;
 import com.tuzki.mall.product.service.ProductCatalogService;
+import com.tuzki.mall.product.service.ProductFootprintService;
 import com.tuzki.mall.product.vo.ProductDetailVO;
 import com.tuzki.mall.product.vo.ProductSummaryVO;
+import com.tuzki.mall.user.service.LoginSessionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,10 +27,22 @@ import java.util.List;
 @RequestMapping("/api/products")
 public class ProductController {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProductController.class);
+
+    private static final String BEARER_PREFIX = "Bearer ";
+
     private final ProductCatalogService productCatalogService;
 
-    public ProductController(ProductCatalogService productCatalogService) {
+    private final ProductFootprintService productFootprintService;
+
+    private final LoginSessionService loginSessionService;
+
+    public ProductController(ProductCatalogService productCatalogService,
+                             ProductFootprintService productFootprintService,
+                             LoginSessionService loginSessionService) {
         this.productCatalogService = productCatalogService;
+        this.productFootprintService = productFootprintService;
+        this.loginSessionService = loginSessionService;
     }
 
     @GetMapping
@@ -48,7 +66,30 @@ public class ProductController {
     }
 
     @GetMapping("/{productId}")
-    public Result<ProductDetailVO> getProductById(@PathVariable Long productId) {
-        return Result.success(productCatalogService.getProductById(productId));
+    public Result<ProductDetailVO> getProductById(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long productId) {
+        ProductDetailVO productDetail = productCatalogService.getProductById(productId);
+        recordFootprintQuietly(authorization, productId);
+        return Result.success(productDetail);
+    }
+
+    private void recordFootprintQuietly(String authorization, Long productId) {
+        if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
+            return;
+        }
+        String token = authorization.substring(BEARER_PREFIX.length()).trim();
+        if (!StringUtils.hasText(token)) {
+            return;
+        }
+        try {
+            Long userId = loginSessionService.getUserId(token);
+            if (userId == null) {
+                return;
+            }
+            productFootprintService.record(userId, productId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("record product footprint failed, productId={}", productId, exception);
+        }
     }
 }

@@ -5,7 +5,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { getOrderDetail, listOrders, type OrderDetail, type OrderMain } from '@/api/order';
-import { listFavoriteProducts } from '@/api/product';
+import { listFavoriteProducts, listProductFootprints } from '@/api/product';
 import { getSignInProfile, signInToday, type SignInProfile } from '@/api/user';
 import SiteHeader from '@/components/SiteHeader.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -18,6 +18,7 @@ const orders = ref<OrderMain[]>([]);
 const orderDetails = ref<Record<number, OrderDetail>>({});
 const signInProfile = ref<SignInProfile | null>(null);
 const favoriteProducts = ref<Array<{ id: number; title: string; price: number; imageUrl: string }>>([]);
+const browsingFootprints = ref<Array<{ id: number; title: string; price: number; imageUrl: string }>>([]);
 
 const orderEntries = computed(() => [
   { label: '待支付', status: 10, count: countByStatus(10) },
@@ -50,33 +51,13 @@ const signCells = computed(() => {
 const signedCount = computed(() => signInProfile.value?.monthSignedCount || 0);
 const continuousSignDays = computed(() => signInProfile.value?.continuousSignedDays || 0);
 const todaySigned = computed(() => Boolean(signInProfile.value?.todaySigned));
-const browsingFootprints = [
-  {
-    id: 910037,
-    title: '北欧陶瓷马克杯',
-    price: 49.8,
-    imageUrl: 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?auto=format&fit=crop&w=300&q=80'
-  },
-  {
-    id: 910024,
-    title: '桌面机械键盘',
-    price: 159,
-    imageUrl: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?auto=format&fit=crop&w=300&q=80'
-  },
-  {
-    id: 910018,
-    title: '智能床头小夜灯',
-    price: 98,
-    imageUrl: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=300&q=80'
-  }
-];
 onMounted(async () => {
   loading.value = true;
   try {
     if (!authStore.user) {
       await authStore.fetchCurrentUser();
     }
-    await Promise.all([loadOrders(), loadSignInProfile(), loadFavoriteProducts()]);
+    await Promise.all([loadOrders(), loadSignInProfile(), loadFavoriteProducts(), loadBrowsingFootprints()]);
   } catch (error) {
     ElMessage.warning(error instanceof Error ? error.message : '请重新登录');
     await router.replace({ path: '/login', query: { redirect: '/profile' } });
@@ -111,6 +92,19 @@ async function loadFavoriteProducts() {
     throw new Error(response.data.message || '收藏商品加载失败');
   }
   favoriteProducts.value = response.data.data.map((product) => ({
+    id: product.productId,
+    title: product.name,
+    price: product.minPrice || 0,
+    imageUrl: product.mainImageUrl || 'https://images.unsplash.com/photo-1557821552-17105176677c?auto=format&fit=crop&w=240&q=80'
+  }));
+}
+
+async function loadBrowsingFootprints() {
+  const response = await listProductFootprints({ limit: 3 });
+  if (!response.data.success) {
+    throw new Error(response.data.message || '浏览足迹加载失败');
+  }
+  browsingFootprints.value = response.data.data.map((product) => ({
     id: product.productId,
     title: product.name,
     price: product.minPrice || 0,
@@ -279,12 +273,11 @@ async function handleLogout() {
             <div class="section-head">
               <div>
                 <h2>浏览足迹</h2>
-                <p>后续可用 Redis ZSet 按访问时间排序</p>
               </div>
-              <button class="plain-link" type="button">全部足迹 <el-icon><ArrowRight /></el-icon></button>
+              <button class="plain-link" type="button" @click="router.push('/footprints')">全部足迹 <el-icon><ArrowRight /></el-icon></button>
             </div>
             <div class="activity-list">
-              <article v-for="product in browsingFootprints" :key="product.id" class="activity-card">
+              <article v-for="product in browsingFootprints" :key="product.id" class="activity-card" @click="router.push(`/product/${product.id}`)">
                 <img :alt="product.title" :src="product.imageUrl" />
                 <div>
                   <strong>{{ product.title }}</strong>
@@ -694,6 +687,7 @@ async function handleLogout() {
   padding: 12px;
   background: #f7f8fb;
   border-radius: 8px;
+  cursor: pointer;
 }
 
 .activity-card img {

@@ -47,6 +47,15 @@ export interface FavoriteProduct {
   favoriteTime: string;
 }
 
+export interface FootprintProduct {
+  productId: number;
+  name: string;
+  subtitle: string;
+  mainImageUrl: string;
+  minPrice: number | null;
+  browseTime: string;
+}
+
 export interface PageResult<T> {
   pageNo: number;
   pageSize: number;
@@ -101,4 +110,16 @@ export function batchProductFavoriteStatus(productIds: number[]) {
 
 export function listFavoriteProducts(params?: { limit?: number }) {
   return http.get<Result<FavoriteProduct[]>>('/api/product-favorites', { params });
+}
+
+export function listProductFootprints(params?: { limit?: number }) {
+  return http.get<Result<FootprintProduct[]>>('/api/product-footprints', { params });
+}
+
+export function deleteProductFootprint(productId: number) {
+  return http.delete<Result<void>>(`/api/product-footprints/${productId}`);
+}
+
+export function clearProductFootprints() {
+  return http.delete<Result<void>>('/api/product-footprints');
 }

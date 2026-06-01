@@ -42,6 +42,14 @@ const router = createRouter({
       }
     },
     {
+      path: '/footprints',
+      name: 'footprints',
+      component: () => import('@/views/FootprintProductsView.vue'),
+      meta: {
+        requiresAuth: true
+      }
+    },
+    {
       path: '/addresses',
       name: 'addresses',
       component: () => import('@/views/AddressManageView.vue'),
