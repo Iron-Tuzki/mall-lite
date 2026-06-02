@@ -19,6 +19,9 @@ class CartRabbitConfigTest {
                     "mall.cart.rabbit.change-exchange=mall.cart.change.exchange",
                     "mall.cart.rabbit.change-queue=mall.cart.change.queue",
                     "mall.cart.rabbit.change-routing-key=mall.cart.change.routing-key",
+                    "mall.cart.rabbit.failed-exchange=mall.cart.failed.exchange",
+                    "mall.cart.rabbit.failed-queue=mall.cart.failed.queue",
+                    "mall.cart.rabbit.failed-routing-key=mall.cart.failed.routing-key",
                     "mall.cart.rabbit.confirm-timeout-seconds=3"
             );
 
@@ -29,11 +32,20 @@ class CartRabbitConfigTest {
             DirectExchange exchange = context.getBean("cartChangeExchange", DirectExchange.class);
             Queue queue = context.getBean("cartChangeQueue", Queue.class);
             Binding binding = context.getBean("cartChangeBinding", Binding.class);
+            DirectExchange failedExchange = context.getBean("cartFailedExchange", DirectExchange.class);
+            Queue failedQueue = context.getBean("cartFailedQueue", Queue.class);
+            Binding failedBinding = context.getBean("cartFailedBinding", Binding.class);
 
             assertThat(properties.getConfirmTimeoutSeconds()).isEqualTo(3);
             assertThat(exchange.getName()).isEqualTo("mall.cart.change.exchange");
             assertThat(queue.getName()).isEqualTo("mall.cart.change.queue");
+            assertThat(queue.getArguments())
+                    .containsEntry("x-dead-letter-exchange", "mall.cart.failed.exchange")
+                    .containsEntry("x-dead-letter-routing-key", "mall.cart.failed.routing-key");
             assertThat(binding.getRoutingKey()).isEqualTo("mall.cart.change.routing-key");
+            assertThat(failedExchange.getName()).isEqualTo("mall.cart.failed.exchange");
+            assertThat(failedQueue.getName()).isEqualTo("mall.cart.failed.queue");
+            assertThat(failedBinding.getRoutingKey()).isEqualTo("mall.cart.failed.routing-key");
         });
     }
 }

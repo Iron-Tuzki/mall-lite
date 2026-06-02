@@ -17,7 +17,7 @@ public class RedisLoginSessionService implements LoginSessionService {
 
     private static final String LOGIN_TOKEN_KEY_PREFIX = "mall:user:login:";
 
-    private static final Duration SESSION_TTL = Duration.ofDays(7);
+    private static final Duration SESSION_TTL = Duration.ofDays(1);
 
     private final RedissonClient redissonClient;
 

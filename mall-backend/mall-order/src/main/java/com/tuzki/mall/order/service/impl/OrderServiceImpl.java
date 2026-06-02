@@ -112,6 +112,7 @@ public class OrderServiceImpl implements OrderService {
             return toCreateVO(existingOrder);
         }
         if (!claimOrderRequest(userId, request.getRequestId())) {
+            // sugus：如果没有抢到幂等，则多次重试查询数据库后返回
             return toCreateVO(getExistingOrderAfterDuplicatedRequest(userId, request.getRequestId()));
         }
 

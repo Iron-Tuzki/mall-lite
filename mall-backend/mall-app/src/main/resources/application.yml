@@ -79,4 +79,7 @@ mall:
       change-exchange: mall.cart.change.exchange
       change-queue: mall.cart.change.queue
       change-routing-key: mall.cart.change.routing-key
+      failed-exchange: mall.cart.failed.exchange
+      failed-queue: mall.cart.failed.queue
+      failed-routing-key: mall.cart.failed.routing-key
       confirm-timeout-seconds: 3
