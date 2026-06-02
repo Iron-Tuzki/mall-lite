@@ -16,6 +16,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 订单 Mapper 集成测试，用于验证订单主表和订单明细表的基础读写以及订单状态条件更新能力。
@@ -103,6 +104,21 @@ class OrderMapperIntegrationTest {
                 LocalDateTime.now().plusMinutes(1));
 
         assertEquals(1, orders.size());
+    }
+
+    @Test
+    void listTimeoutPendingOrderIdsOnlyReturnsExpiredPendingOrders() {
+        Order pendingOrder = buildPendingOrder("ORDER-TIMEOUT-PENDING-");
+        Order paidOrder = buildPendingOrder("ORDER-TIMEOUT-PAID-");
+        orderMapper.insert(pendingOrder);
+        orderMapper.insert(paidOrder);
+        orderMapper.markPaidIfPending(paidOrder.getId(), LocalDateTime.now());
+
+        List<Long> orderIds = orderMapper.listTimeoutPendingOrderIds(LocalDateTime.now().plusMinutes(1), 100);
+
+        assertThat(orderIds)
+                .contains(pendingOrder.getId())
+                .doesNotContain(paidOrder.getId());
     }
 
     private Order buildPendingOrder(String orderNoPrefix) {

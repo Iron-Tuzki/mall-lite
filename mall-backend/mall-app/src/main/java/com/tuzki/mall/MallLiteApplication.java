@@ -2,14 +2,13 @@ package com.tuzki.mall;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Mall Lite application startup class.
- *
- * <p>This class bootstraps the lightweight mall backend and loads all business modules
- * under the {@code com.tuzki.mall} package.</p>
+ * Mall Lite 应用启动类，负责启动轻量商城后端并加载 {@code com.tuzki.mall} 包下的业务模块。
  */
 @SpringBootApplication
+@EnableScheduling
 public class MallLiteApplication {
 
     public static void main(String[] args) {

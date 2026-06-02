@@ -58,6 +58,25 @@ public interface OrderMapper extends BaseMapper<Order> {
                             @Param("cancelReason") String cancelReason);
 
     /**
+     * 分批查询指定时间之前创建的待支付订单 ID，用于定时任务补偿遗漏的超时取消消息。
+     *
+     * @param timeoutBefore 超时边界时间，创建时间早于或等于该时间的待支付订单需要补偿
+     * @param batchSize 单次查询最大订单数量
+     * @return 需要补偿取消的订单 ID 列表
+     */
+    @Select("""
+            SELECT id
+            FROM oms_order
+            WHERE status = 10
+              AND deleted = 0
+              AND create_time <= #{timeoutBefore}
+            ORDER BY id
+            LIMIT #{batchSize}
+            """)
+    List<Long> listTimeoutPendingOrderIds(@Param("timeoutBefore") LocalDateTime timeoutBefore,
+                                          @Param("batchSize") Integer batchSize);
+
+    /**
      * 使用数据库行锁查询指定订单。
      *
      * @param orderId 订单 ID，用于定位需要加锁的订单主记录

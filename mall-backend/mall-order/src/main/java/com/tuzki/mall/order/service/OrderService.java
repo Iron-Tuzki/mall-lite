@@ -45,6 +45,15 @@ public interface OrderService {
     void cancelTimeoutOrder(Long orderId);
 
     /**
+     * 分批查询指定时间之前创建的待支付订单 ID，供定时任务补偿遗漏的超时取消消息。
+     *
+     * @param timeoutBefore 超时边界时间
+     * @param batchSize 单次查询最大订单数量
+     * @return 需要补偿取消的订单 ID 列表
+     */
+    List<Long> listTimeoutPendingOrderIds(LocalDateTime timeoutBefore, Integer batchSize);
+
+    /**
      * 查询指定用户的订单列表。
      *
      * @param userId 用户 ID

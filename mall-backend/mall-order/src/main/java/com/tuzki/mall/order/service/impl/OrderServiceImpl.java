@@ -186,6 +186,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public List<Long> listTimeoutPendingOrderIds(LocalDateTime timeoutBefore, Integer batchSize) {
+        return orderMapper.listTimeoutPendingOrderIds(timeoutBefore, batchSize);
+    }
+
+    @Override
     public List<OrderMainVO> listOrders(Long userId, Integer status, LocalDateTime startTime, LocalDateTime endTime) {
         return orderMapper.listOrders(userId, status, startTime, endTime);
     }
