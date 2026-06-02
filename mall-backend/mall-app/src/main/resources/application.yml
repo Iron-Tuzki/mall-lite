@@ -21,6 +21,7 @@ spring:
     username: guest
     password: guest
     virtual-host: /
+    publisher-confirm-type: simple
     listener:
       simple:
         default-requeue-rejected: false
@@ -73,3 +74,9 @@ mall:
       failed-queue: mall.coupon.failed.queue
       failed-routing-key: mall.coupon.failed.routing-key
       timeout-minutes: 30
+  cart:
+    rabbit:
+      change-exchange: mall.cart.change.exchange
+      change-queue: mall.cart.change.queue
+      change-routing-key: mall.cart.change.routing-key
+      confirm-timeout-seconds: 3

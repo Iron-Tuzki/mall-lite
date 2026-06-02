@@ -5,28 +5,45 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { listAddresses, type AddressItem } from '@/api/address';
+import { deleteCartItems } from '@/api/cart';
 import { createOrder } from '@/api/order';
 import { getProductDetail, type ProductDetail, type SkuItem } from '@/api/product';
 import SiteHeader from '@/components/SiteHeader.vue';
 import { useAuthStore } from '@/stores/auth';
+import {
+  clearCartCheckoutItems,
+  getCartCheckoutItems,
+  type CheckoutItem
+} from '@/utils/checkoutStorage';
+
+interface SelectedGoods {
+  checkoutItem: CheckoutItem;
+  product: ProductDetail;
+  sku: SkuItem;
+}
 
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 
-const product = ref<ProductDetail | null>(null);
+const checkoutItems = ref<CheckoutItem[]>([]);
+const products = ref<Record<number, ProductDetail>>({});
 const addresses = ref<AddressItem[]>([]);
 const selectedAddressId = ref<number | null>(null);
 const remark = ref('');
 const loading = ref(false);
 const submitting = ref(false);
 
-const productId = computed(() => Number(route.query.productId));
-const skuId = computed(() => Number(route.query.skuId));
-const quantity = computed(() => Math.max(1, Number(route.query.quantity || 1)));
-const selectedSku = computed<SkuItem | null>(() => product.value?.skus.find((sku) => sku.id === skuId.value) || null);
+const isCartCheckout = computed(() => route.query.source === 'cart');
 const selectedAddress = computed(() => addresses.value.find((address) => address.id === selectedAddressId.value) || null);
-const goodsAmount = computed(() => Number(((selectedSku.value?.price || 0) * quantity.value).toFixed(2)));
+const selectedGoods = computed<SelectedGoods[]>(() => checkoutItems.value.flatMap((checkoutItem) => {
+  const product = products.value[checkoutItem.productId];
+  const sku = product?.skus.find((item) => item.id === checkoutItem.skuId);
+  return product && sku ? [{ checkoutItem, product, sku }] : [];
+}));
+const goodsAmount = computed(() => selectedGoods.value.reduce((sum, goods) => (
+  sum + goods.sku.price * goods.checkoutItem.quantity
+), 0).toFixed(2));
 
 onMounted(async () => {
   if (!authStore.user) {
@@ -34,28 +51,50 @@ onMounted(async () => {
       await router.replace({ path: '/login', query: { redirect: route.fullPath } });
     });
   }
+  if (!authStore.user) {
+    return;
+  }
   await loadConfirmData();
 });
 
+function prepareCheckoutItems() {
+  if (isCartCheckout.value) {
+    checkoutItems.value = getCartCheckoutItems();
+    return checkoutItems.value.length > 0;
+  }
+  const productId = Number(route.query.productId);
+  const skuId = Number(route.query.skuId);
+  const quantity = Number(route.query.quantity || 1);
+  if (!productId || !skuId || !Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+    return false;
+  }
+  checkoutItems.value = [{ productId, skuId, quantity }];
+  return true;
+}
+
 async function loadConfirmData() {
-  if (!productId.value || !skuId.value) {
+  if (!prepareCheckoutItems()) {
     ElMessage.warning('缺少商品信息，请重新选择商品');
-    await router.replace('/');
+    await router.replace(isCartCheckout.value ? '/cart' : '/');
     return;
   }
   loading.value = true;
   try {
-    const [productResponse, addressResponse] = await Promise.all([
-      getProductDetail(productId.value),
-      authStore.user ? listAddresses(authStore.user.id) : Promise.resolve(null)
+    const productIds = [...new Set(checkoutItems.value.map((item) => item.productId))];
+    const [productResponses, addressResponse] = await Promise.all([
+      Promise.all(productIds.map((productId) => getProductDetail(productId))),
+      listAddresses(authStore.user!.id)
     ]);
-    product.value = productResponse.data.data;
-    if (!selectedSku.value) {
-      ElMessage.warning('当前规格不存在，请重新选择商品');
-      await router.replace(`/product/${productId.value}`);
+    products.value = Object.fromEntries(productResponses.map((response) => {
+      const product = response.data.data;
+      return [product.id, product];
+    }));
+    if (selectedGoods.value.length !== checkoutItems.value.length) {
+      ElMessage.warning('部分商品规格已失效，请重新选择');
+      await router.replace(isCartCheckout.value ? '/cart' : `/product/${checkoutItems.value[0].productId}`);
       return;
     }
-    addresses.value = addressResponse?.data.data || [];
+    addresses.value = addressResponse.data.data;
     selectedAddressId.value = addresses.value.find((address) => address.defaultFlag === 1)?.id || addresses.value[0]?.id || null;
   } catch {
     ElMessage.error('确认订单信息加载失败');
@@ -69,25 +108,29 @@ async function submitOrder() {
     ElMessage.warning('请选择收货地址');
     return;
   }
-  if (!selectedSku.value) {
+  if (selectedGoods.value.length === 0) {
     ElMessage.warning('请选择商品规格');
     return;
   }
   submitting.value = true;
   try {
     const response = await createOrder({
-      requestId: `front-buy-now-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      requestId: `front-${isCartCheckout.value ? 'cart' : 'buy-now'}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       addressId: selectedAddress.value.id,
-      items: [
-        {
-          skuId: selectedSku.value.id,
-          quantity: quantity.value
-        }
-      ],
+      items: selectedGoods.value.map((goods) => ({
+        skuId: goods.sku.id,
+        quantity: goods.checkoutItem.quantity
+      })),
       remark: remark.value.trim() || undefined
     });
     if (!response.data.success) {
       throw new Error(response.data.message || '提交订单失败');
+    }
+    if (isCartCheckout.value) {
+      await deleteCartItems(checkoutItems.value.map((item) => item.skuId)).catch(() => {
+        ElMessage.warning('订单已创建，购物车稍后可手动清理');
+      });
+      clearCartCheckoutItems();
     }
     await router.replace(`/order/result/${response.data.data.orderId}`);
   } catch (error) {
@@ -104,7 +147,7 @@ async function submitOrder() {
   <main v-loading="loading" class="confirm-page page-shell">
     <section class="confirm-head">
       <div>
-        <span>Buy Now</span>
+        <span>{{ isCartCheckout ? 'Cart Checkout' : 'Buy Now' }}</span>
         <h1>确认订单</h1>
         <p>确认收货地址、商品信息和支付金额后提交订单。</p>
       </div>
@@ -139,14 +182,14 @@ async function submitOrder() {
           <div class="section-head">
             <h2>商品信息</h2>
           </div>
-          <div class="goods-row">
-            <img :alt="product?.name" :src="selectedSku?.mainImageUrl || product?.mainImageUrl" />
+          <div v-for="goods in selectedGoods" :key="goods.sku.id" class="goods-row">
+            <img :alt="goods.product.name" :src="goods.sku.mainImageUrl || goods.product.mainImageUrl" />
             <div>
-              <h3>{{ product?.name }}</h3>
-              <p>{{ selectedSku?.skuName }}</p>
-              <span>数量：{{ quantity }}</span>
+              <h3>{{ goods.product.name }}</h3>
+              <p>{{ goods.sku.skuName }}</p>
+              <span>数量：{{ goods.checkoutItem.quantity }}</span>
             </div>
-            <strong>￥{{ selectedSku?.price || 0 }}</strong>
+            <strong>￥{{ goods.sku.price }}</strong>
           </div>
         </div>
 
@@ -260,6 +303,17 @@ async function submitOrder() {
   grid-template-columns: 96px minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.goods-row:first-of-type {
+  padding-top: 0;
+}
+
+.goods-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .goods-row img {

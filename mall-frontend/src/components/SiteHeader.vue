@@ -45,7 +45,7 @@ function searchProducts() {
           <el-icon><User /></el-icon>
           {{ accountLinkText }}
         </RouterLink>
-        <RouterLink class="action-link cart-link" to="/">
+        <RouterLink class="action-link cart-link" to="/cart">
           <el-icon><ShoppingCart /></el-icon>
           购物车
         </RouterLink>

@@ -58,6 +58,14 @@ const router = createRouter({
       }
     },
     {
+      path: '/cart',
+      name: 'cart',
+      component: () => import('@/views/CartView.vue'),
+      meta: {
+        requiresAuth: true
+      }
+    },
+    {
       path: '/order/confirm',
       name: 'order-confirm',
       component: () => import('@/views/OrderConfirmView.vue'),

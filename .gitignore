@@ -1,5 +1,6 @@
 # Project exclude paths
 /mall-backend/mall-app/target/
+/mall-backend/mall-cart/target/
 /mall-backend/mall-common/target/
 /mall-backend/mall-inventory/target/
 /mall-backend/mall-order/target/
@@ -9,3 +10,4 @@
 /docs/.obsidian
 /mall-frontend/node_modules/
 /mall-frontend/dist/
+/.worktrees/

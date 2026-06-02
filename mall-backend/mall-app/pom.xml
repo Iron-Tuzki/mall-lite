@@ -44,6 +44,11 @@
         </dependency>
         <dependency>
             <groupId>com.tuzki</groupId>
+            <artifactId>mall-cart</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.tuzki</groupId>
             <artifactId>mall-payment</artifactId>
             <version>${project.version}</version>
         </dependency>

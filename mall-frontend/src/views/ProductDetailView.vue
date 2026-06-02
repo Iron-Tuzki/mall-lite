@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
+import { addCartItem } from '@/api/cart';
 import {
   cancelFavoriteProduct,
   checkProductFavorite,
@@ -26,6 +27,7 @@ const quantity = ref(1);
 const loading = ref(false);
 const favorited = ref(false);
 const favoriteSubmitting = ref(false);
+const cartSubmitting = ref(false);
 
 const selectedSku = computed(() => product.value?.skus.find((sku) => sku.id === selectedSkuId.value) || null);
 const mainImage = computed(() => {
@@ -95,6 +97,26 @@ async function toggleFavorite() {
     ElMessage.error('收藏操作失败');
   } finally {
     favoriteSubmitting.value = false;
+  }
+}
+
+async function addToCart() {
+  if (!selectedSku.value) {
+    ElMessage.warning('请选择商品规格');
+    return;
+  }
+  if (!authStore.isLoggedIn) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } });
+    return;
+  }
+  cartSubmitting.value = true;
+  try {
+    await addCartItem(selectedSku.value.id, quantity.value);
+    ElMessage.success('已加入购物车');
+  } catch {
+    ElMessage.error('加入购物车失败');
+  } finally {
+    cartSubmitting.value = false;
   }
 }
 
@@ -172,7 +194,9 @@ function buyNow() {
           </div>
 
           <div class="action-row">
-            <el-button size="large" :icon="ShoppingCart">加入购物车</el-button>
+            <el-button size="large" :icon="ShoppingCart" :loading="cartSubmitting" @click="addToCart">
+              加入购物车
+            </el-button>
             <el-button class="buy-button" size="large" type="primary" @click="buyNow">立即购买</el-button>
           </div>
         </div>
