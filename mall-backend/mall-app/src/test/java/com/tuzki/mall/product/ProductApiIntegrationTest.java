@@ -9,6 +9,7 @@ import com.tuzki.mall.product.mapper.SkuMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
+import org.redisson.client.codec.StringCodec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,6 +51,32 @@ class ProductApiIntegrationTest {
         if (cachedProductId != null) {
             redissonClient.getBucket("mall:product:detail:" + cachedProductId).delete();
         }
+    }
+
+    @Test
+    void missingProductDetailIsCachedWithShortTtl() throws Exception {
+        Long missingProductId = 999999998L;
+        cachedProductId = missingProductId;
+
+        mockMvc.perform(get("/api/products/{productId}", missingProductId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("product not found"));
+
+        String cacheKey = "mall:product:detail:" + missingProductId;
+        assertEquals("__NULL__", redissonClient.getBucket(cacheKey, StringCodec.INSTANCE).get());
+        long ttl = redissonClient.getBucket(cacheKey, StringCodec.INSTANCE).remainTimeToLive();
+        assertTrue(ttl > 0 && ttl <= 300_000);
+
+        Long categoryId = insertCategory("Null Cache Category");
+        insertProductWithId(missingProductId, categoryId, "NULL" + System.nanoTime(), "Null Cache Product");
+
+        mockMvc.perform(get("/api/products/{productId}", missingProductId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("product not found"));
     }
 
     @Test
@@ -225,6 +254,20 @@ class ProductApiIntegrationTest {
         product.setDeleted(0);
         productMapper.insert(product);
         return product.getId();
+    }
+
+    private void insertProductWithId(Long productId, Long categoryId, String productCode, String name) {
+        Product product = new Product();
+        product.setId(productId);
+        product.setCategoryId(categoryId);
+        product.setProductCode(productCode);
+        product.setName(name);
+        product.setSubtitle("Null cache test product");
+        product.setDescription("Null cache test description");
+        product.setStatus(1);
+        product.setSort(1);
+        product.setDeleted(0);
+        productMapper.insert(product);
     }
 
     private Long insertOfflineProduct(Long categoryId, String productCode, String name) {

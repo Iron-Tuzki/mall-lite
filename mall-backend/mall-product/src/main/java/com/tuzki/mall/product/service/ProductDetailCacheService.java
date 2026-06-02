@@ -18,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class ProductDetailCacheService {
 
+    private static final String NULL_VALUE = "__NULL__";
+
     private final RedissonClient redissonClient;
 
     private final ObjectMapper objectMapper;
@@ -34,6 +36,9 @@ public class ProductDetailCacheService {
     public ProductDetailVO get(Long productId) {
         String cacheValue = getBucket(productId).get();
         if (cacheValue == null) {
+            return null;
+        }
+        if (NULL_VALUE.equals(cacheValue)) {
             return null;
         }
         try {
@@ -53,12 +58,22 @@ public class ProductDetailCacheService {
         }
     }
 
+    public boolean isNullValueCached(Long productId) {
+        return NULL_VALUE.equals(getBucket(productId).get());
+    }
+
+    public void putNullValue(Long productId) {
+        long ttlSeconds = TimeUnit.MINUTES.toSeconds(productCacheProperties.getDetailNullTtlMinutes());
+        getBucket(productId).set(NULL_VALUE, ttlSeconds, TimeUnit.SECONDS);
+    }
+
     private RBucket<String> getBucket(Long productId) {
         String key = productCacheProperties.getDetailKeyPrefix() + productId;
         return redissonClient.getBucket(key, StringCodec.INSTANCE);
     }
 
     private long buildTtlSeconds() {
+        // 基础过期时间增加随机偏移
         long baseSeconds = TimeUnit.MINUTES.toSeconds(productCacheProperties.getDetailTtlMinutes());
         long randomMinutes = Math.max(productCacheProperties.getDetailRandomTtlMinutes(), 0);
         long randomSeconds = randomMinutes == 0

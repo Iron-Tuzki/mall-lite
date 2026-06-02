@@ -41,6 +41,35 @@ public interface PaymentMapper extends BaseMapper<Payment> {
     Payment selectByPaymentNoForUpdate(@Param("paymentNo") String paymentNo);
 
     /**
+     * 使用当前读并加行锁查询指定订单的待支付流水。
+     *
+     * @param orderId 订单 ID，用于定位唯一键冲突后需要返回的待支付流水
+     * @return 未删除的待支付流水；如果流水不存在，返回 null
+     */
+    @Select("""
+            SELECT id,
+                   payment_no,
+                   order_id,
+                   order_no,
+                   user_id,
+                   pay_channel,
+                   pay_amount,
+                   status,
+                   pay_time,
+                   callback_content,
+                   create_time,
+                   update_time,
+                   deleted
+            FROM pms_payment
+            WHERE order_id = #{orderId}
+              AND status = 10
+              AND deleted = 0
+            LIMIT 1
+            FOR UPDATE
+            """)
+    Payment selectPendingByOrderIdForUpdate(@Param("orderId") Long orderId);
+
+    /**
      * 将待支付流水原子更新为支付成功。
      *
      * @param paymentNo 支付流水号，用于定位待处理的支付流水

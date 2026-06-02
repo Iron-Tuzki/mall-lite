@@ -123,10 +123,14 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
         if (cachedProductDetailVO != null) {
             return cachedProductDetailVO;
         }
+        if (productDetailCacheService.isNullValueCached(productId)) {
+            throw new BusinessException(404, "product not found");
+        }
 
         Product product = productMapper.selectOne(activeProductQuery()
                 .eq(Product::getId, productId));
         if (product == null) {
+            productDetailCacheService.putNullValue(productId);
             throw new BusinessException(404, "product not found");
         }
 

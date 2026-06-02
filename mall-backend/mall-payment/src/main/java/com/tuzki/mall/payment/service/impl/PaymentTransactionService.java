@@ -51,6 +51,8 @@ public class PaymentTransactionService {
 
     @Transactional(rollbackFor = Exception.class)
     public PaymentPayVO createPendingPayment(Long orderId) {
+        // 先锁定订单行（和下单接口保持相同的加锁顺序）。
+        // 如果有重复请求，因为加锁所以串行化
         Order order = getActiveOrderForUpdate(orderId);
         OrderStatus.fromCode(order.getStatus()).checkCanPay();
 
@@ -59,7 +61,8 @@ public class PaymentTransactionService {
             paymentMapper.insert(payment);
             return toPaymentPayVO(payment, order);
         } catch (DuplicateKeyException exception) {
-            Payment existingPendingPayment = getPendingPayment(order.getId());
+            // 使用当前读查询其他事务已经提交的数据，避免依赖 Read View 的创建时机。
+            Payment existingPendingPayment = paymentMapper.selectPendingByOrderIdForUpdate(order.getId());
             if (existingPendingPayment != null) {
                 return toPaymentPayVO(existingPendingPayment, order);
             }
@@ -72,8 +75,8 @@ public class PaymentTransactionService {
         Payment payment = getActivePayment(paymentNo);
         Order order = getActiveOrderForUpdate(payment.getOrderId());
         LocalDateTime now = LocalDateTime.now();
+        // 使用状态机实现支付回调幂等
         int affectedRows = markPaymentTerminalIfPending(paymentNo, now, mockResult);
-
         // affectedRows 为 0 表示支付流水已被其他回调处理，使用当前读读取最新数据并返回，避免重复扣库存。
         if (affectedRows == 0) {
             Payment currentPayment = getActivePaymentForUpdate(paymentNo);
@@ -155,14 +158,6 @@ public class PaymentTransactionService {
             throw new BusinessException(404, "payment not found");
         }
         return payment;
-    }
-
-    private Payment getPendingPayment(Long orderId) {
-        return paymentMapper.selectOne(new LambdaQueryWrapper<Payment>()
-                .eq(Payment::getOrderId, orderId)
-                .eq(Payment::getStatus, PaymentStatus.PENDING.getCode())
-                .eq(Payment::getDeleted, NOT_DELETED)
-                .last("limit 1"));
     }
 
     private Payment buildPendingPayment(Order order) {

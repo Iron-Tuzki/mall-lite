@@ -53,6 +53,7 @@ mall:
       detail-key-prefix: "mall:product:detail:"
       detail-ttl-minutes: 30
       detail-random-ttl-minutes: 5
+      detail-null-ttl-minutes: 5
   order:
     rabbit:
       delay-exchange: mall.order.delay.exchange

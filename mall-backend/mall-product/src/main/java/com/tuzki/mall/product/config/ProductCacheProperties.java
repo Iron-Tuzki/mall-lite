@@ -16,6 +16,8 @@ public class ProductCacheProperties {
 
     private long detailRandomTtlMinutes = 5;
 
+    private long detailNullTtlMinutes = 5;
+
     public String getDetailKeyPrefix() {
         return detailKeyPrefix;
     }
@@ -38,5 +40,13 @@ public class ProductCacheProperties {
 
     public void setDetailRandomTtlMinutes(long detailRandomTtlMinutes) {
         this.detailRandomTtlMinutes = detailRandomTtlMinutes;
+    }
+
+    public long getDetailNullTtlMinutes() {
+        return detailNullTtlMinutes;
+    }
+
+    public void setDetailNullTtlMinutes(long detailNullTtlMinutes) {
+        this.detailNullTtlMinutes = detailNullTtlMinutes;
     }
 }

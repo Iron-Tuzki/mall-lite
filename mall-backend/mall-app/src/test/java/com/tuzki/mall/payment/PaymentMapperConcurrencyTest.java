@@ -55,4 +55,23 @@ class PaymentMapperConcurrencyTest {
         assertEquals(0, secondAffectedRows);
         assertEquals(PaymentStatus.SUCCESS.getCode(), currentPayment.getStatus());
     }
+
+    @Test
+    void selectPendingByOrderIdForUpdateReturnsPendingPayment() {
+        Payment payment = new Payment();
+        payment.setPaymentNo("P-PENDING-" + System.nanoTime());
+        payment.setOrderId(System.nanoTime());
+        payment.setOrderNo("O-PENDING-" + System.nanoTime());
+        payment.setUserId(1L);
+        payment.setPayChannel(PayChannel.MOCK.getCode());
+        payment.setPayAmount(new BigDecimal("199.00"));
+        payment.setStatus(PaymentStatus.PENDING.getCode());
+        payment.setDeleted(0);
+        paymentMapper.insert(payment);
+
+        Payment currentPayment = paymentMapper.selectPendingByOrderIdForUpdate(payment.getOrderId());
+
+        assertEquals(payment.getPaymentNo(), currentPayment.getPaymentNo());
+        assertEquals(PaymentStatus.PENDING.getCode(), currentPayment.getStatus());
+    }
 }
