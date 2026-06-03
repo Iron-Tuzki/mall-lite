@@ -38,6 +38,7 @@ public class OrderTimeoutCompensationTask {
     )
     @RedisDistributedLock(LOCK_KEY)
     public void cancelTimeoutOrders() {
+        long begin = System.currentTimeMillis();
         LocalDateTime timeoutBefore = LocalDateTime.now().minusMinutes(properties.getTimeoutMinutes());
         List<Long> orderIds = orderService.listTimeoutPendingOrderIds(timeoutBefore, properties.getBatchSize());
         for (Long orderId : orderIds) {
@@ -47,5 +48,7 @@ public class OrderTimeoutCompensationTask {
                 LOGGER.error("compensate timeout order failed, orderId={}", orderId, exception);
             }
         }
+        long end = System.currentTimeMillis();
+        LOGGER.info("订单超时补偿任务，定期扫描遗漏的超时待支付订单，耗时{}ms", (end - begin));
     }
 }
