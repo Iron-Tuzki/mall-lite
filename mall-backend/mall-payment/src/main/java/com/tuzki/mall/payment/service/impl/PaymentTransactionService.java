@@ -14,13 +14,22 @@ import com.tuzki.mall.payment.enums.PayChannel;
 import com.tuzki.mall.payment.enums.PaymentStatus;
 import com.tuzki.mall.payment.mapper.PaymentMapper;
 import com.tuzki.mall.payment.vo.PaymentPayVO;
+import com.tuzki.mall.product.hot.ProductHotAction;
+import com.tuzki.mall.product.hot.ProductHotEvent;
+import com.tuzki.mall.product.hot.ProductHotEventSender;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -28,6 +37,8 @@ import java.util.UUID;
  */
 @Service
 public class PaymentTransactionService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(PaymentTransactionService.class);
 
     private static final int NOT_DELETED = 0;
 
@@ -39,14 +50,18 @@ public class PaymentTransactionService {
 
     private final InventoryService inventoryService;
 
+    private final ProductHotEventSender productHotEventSender;
+
     public PaymentTransactionService(OrderMapper orderMapper,
                                      OrderItemMapper orderItemMapper,
                                      PaymentMapper paymentMapper,
-                                     InventoryService inventoryService) {
+                                     InventoryService inventoryService,
+                                     ProductHotEventSender productHotEventSender) {
         this.orderMapper = orderMapper;
         this.orderItemMapper = orderItemMapper;
         this.paymentMapper = paymentMapper;
         this.inventoryService = inventoryService;
+        this.productHotEventSender = productHotEventSender;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -89,7 +104,9 @@ public class PaymentTransactionService {
 
         if (mockResult == MockPaymentResult.SUCCESS) {
             payment.setPayTime(now);
-            confirmPaymentSuccess(payment, order);
+            List<Long> paidProductIds = confirmPaymentSuccess(payment, order);
+            // 支付成功提交后发送热点事件
+            runAfterCommit(() -> sendPaymentHotEventsQuietly(paidProductIds));
         }
         return toPaymentPayVO(payment, order);
     }
@@ -102,7 +119,7 @@ public class PaymentTransactionService {
         return paymentMapper.markFailedIfPending(paymentNo, callbackContent);
     }
 
-    private void confirmPaymentSuccess(Payment payment, Order order) {
+    private List<Long> confirmPaymentSuccess(Payment payment, Order order) {
         OrderStatus.fromCode(order.getStatus()).checkCanPay();
 
         List<OrderItem> orderItems = orderItemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
@@ -122,6 +139,7 @@ public class PaymentTransactionService {
         }
         order.setStatus(OrderStatus.PAID.getCode());
         order.setPayTime(payment.getPayTime());
+        return distinctProductIds(orderItems);
     }
 
     private Order getActiveOrder(Long orderId) {
@@ -192,5 +210,43 @@ public class PaymentTransactionService {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String randomSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase();
         return "P" + timestamp + randomSuffix;
+    }
+
+    private List<Long> distinctProductIds(List<OrderItem> orderItems) {
+        Set<Long> productIds = new LinkedHashSet<>();
+        for (OrderItem orderItem : orderItems) {
+            if (orderItem.getProductId() != null) {
+                productIds.add(orderItem.getProductId());
+            }
+        }
+        return productIds.stream().toList();
+    }
+
+    private void sendPaymentHotEventsQuietly(List<Long> productIds) {
+        for (Long productId : productIds) {
+            try {
+                productHotEventSender.send(new ProductHotEvent(
+                        UUID.randomUUID().toString(),
+                        productId,
+                        ProductHotAction.PAY_SUCCESS,
+                        LocalDateTime.now()));
+            } catch (RuntimeException exception) {
+                LOGGER.warn("send payment product hot event failed, productId={}", productId, exception);
+            }
+        }
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            // 没有事务，不存在事务提交，代码没法延迟执行，立刻运行传入的任务。
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 }

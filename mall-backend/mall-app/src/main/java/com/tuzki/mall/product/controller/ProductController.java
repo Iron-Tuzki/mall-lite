@@ -5,6 +5,7 @@ import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.api.Result;
 import com.tuzki.mall.product.service.ProductCatalogService;
 import com.tuzki.mall.product.service.ProductFootprintService;
+import com.tuzki.mall.product.service.ProductHotService;
 import com.tuzki.mall.product.vo.ProductDetailVO;
 import com.tuzki.mall.product.vo.ProductSummaryVO;
 import com.tuzki.mall.user.service.LoginSessionService;
@@ -35,13 +36,17 @@ public class ProductController {
 
     private final ProductFootprintService productFootprintService;
 
+    private final ProductHotService productHotService;
+
     private final LoginSessionService loginSessionService;
 
     public ProductController(ProductCatalogService productCatalogService,
                              ProductFootprintService productFootprintService,
+                             ProductHotService productHotService,
                              LoginSessionService loginSessionService) {
         this.productCatalogService = productCatalogService;
         this.productFootprintService = productFootprintService;
+        this.productHotService = productHotService;
         this.loginSessionService = loginSessionService;
     }
 
@@ -57,6 +62,11 @@ public class ProductController {
         return Result.success(productCatalogService.recommendProducts(pageNo, pageSize));
     }
 
+    @GetMapping("/hot")
+    public Result<List<ProductSummaryVO>> hotProducts(@RequestParam(required = false) Integer limit) {
+        return Result.success(productHotService.listHotProducts(limit));
+    }
+
     @GetMapping("/recommend/scroll")
     public Result<CursorPageResult<ProductSummaryVO>> scrollRecommendProducts(
             @RequestParam(required = false) Integer pageSize,
@@ -68,28 +78,55 @@ public class ProductController {
     @GetMapping("/{productId}")
     public Result<ProductDetailVO> getProductById(
             @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
             @PathVariable Long productId) {
         ProductDetailVO productDetail = productCatalogService.getProductById(productId);
-        recordFootprintQuietly(authorization, productId);
+        recordVisitQuietly(authorization, deviceId, productId);
         return Result.success(productDetail);
     }
 
-    private void recordFootprintQuietly(String authorization, Long productId) {
+    private void recordVisitQuietly(String authorization, String deviceId, Long productId) {
+        Long userId = resolveUserIdQuietly(authorization, productId);
+        recordFootprintQuietly(userId, productId);
+        recordHotViewQuietly(userId, deviceId, productId);
+    }
+
+    private Long resolveUserIdQuietly(String authorization, Long productId) {
         if (!StringUtils.hasText(authorization) || !authorization.startsWith(BEARER_PREFIX)) {
-            return;
+            return null;
         }
         String token = authorization.substring(BEARER_PREFIX.length()).trim();
         if (!StringUtils.hasText(token)) {
+            return null;
+        }
+        try {
+            return loginSessionService.getUserId(token);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("resolve product visit user failed, productId={}", productId, exception);
+            return null;
+        }
+    }
+
+    private void recordFootprintQuietly(Long userId, Long productId) {
+        if (userId == null) {
             return;
         }
         try {
-            Long userId = loginSessionService.getUserId(token);
-            if (userId == null) {
-                return;
-            }
             productFootprintService.record(userId, productId);
         } catch (RuntimeException exception) {
             LOGGER.warn("record product footprint failed, productId={}", productId, exception);
+        }
+    }
+
+    private void recordHotViewQuietly(Long userId, String deviceId, Long productId) {
+        try {
+            if (userId != null) {
+                productHotService.recordViewByUser(userId, productId);
+            } else {
+                productHotService.recordViewByDevice(deviceId, productId);
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.warn("record product hot view failed, productId={}", productId, exception);
         }
     }
 }

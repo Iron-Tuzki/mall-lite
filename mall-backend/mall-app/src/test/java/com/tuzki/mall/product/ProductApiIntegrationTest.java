@@ -51,6 +51,7 @@ class ProductApiIntegrationTest {
         if (cachedProductId != null) {
             redissonClient.getBucket("mall:product:detail:" + cachedProductId).delete();
         }
+        redissonClient.getScoredSortedSet("mall:product:hot:homepage", StringCodec.INSTANCE).delete();
     }
 
     @Test
@@ -162,6 +163,28 @@ class ProductApiIntegrationTest {
                 .andExpect(jsonPath("$.data.records[0].minPrice").value(88.80))
                 .andExpect(jsonPath("$.data.records[1].id").value(firstProductId))
                 .andExpect(jsonPath("$.data.records[1].minPrice").value(99.90));
+    }
+
+    @Test
+    void hotProductsReturnProductsByRedisHotRank() throws Exception {
+        long suffix = System.nanoTime();
+        Long categoryId = insertCategory("Hot " + suffix);
+        Long firstProductId = insertProduct(categoryId, "H1" + suffix, "Hot First " + suffix);
+        Long secondProductId = insertProduct(categoryId, "H2" + suffix, "Hot Second " + suffix);
+        insertSku(firstProductId, "HS1" + suffix, "Hot First SKU", new BigDecimal("199.90"));
+        insertSku(secondProductId, "HS2" + suffix, "Hot Second SKU", new BigDecimal("299.90"));
+        redissonClient.getScoredSortedSet("mall:product:hot:homepage", StringCodec.INSTANCE)
+                .add(80D, String.valueOf(firstProductId));
+        redissonClient.getScoredSortedSet("mall:product:hot:homepage", StringCodec.INSTANCE)
+                .add(120D, String.valueOf(secondProductId));
+
+        mockMvc.perform(get("/api/products/hot").param("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].id").value(secondProductId))
+                .andExpect(jsonPath("$.data[0].minPrice").value(299.90))
+                .andExpect(jsonPath("$.data[1].id").value(firstProductId))
+                .andExpect(jsonPath("$.data[1].minPrice").value(199.90));
     }
 
     @Test

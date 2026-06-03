@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.product.entity.Product;
 import com.tuzki.mall.product.entity.ProductFavorite;
+import com.tuzki.mall.product.hot.ProductHotAction;
+import com.tuzki.mall.product.hot.ProductHotEvent;
+import com.tuzki.mall.product.hot.ProductHotEventSender;
 import com.tuzki.mall.product.mapper.ProductFavoriteMapper;
 import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.service.ProductFavoriteCacheService;
@@ -22,6 +25,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * 商品收藏服务默认实现，使用 MySQL 收藏表作为收藏关系的权威存储。
@@ -45,12 +50,16 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
 
     private final ProductFavoriteCacheService productFavoriteCacheService;
 
+    private final ProductHotEventSender productHotEventSender;
+
     public ProductFavoriteServiceImpl(ProductFavoriteMapper productFavoriteMapper,
                                       ProductMapper productMapper,
-                                      ProductFavoriteCacheService productFavoriteCacheService) {
+                                      ProductFavoriteCacheService productFavoriteCacheService,
+                                      ProductHotEventSender productHotEventSender) {
         this.productFavoriteMapper = productFavoriteMapper;
         this.productMapper = productMapper;
         this.productFavoriteCacheService = productFavoriteCacheService;
+        this.productHotEventSender = productHotEventSender;
     }
 
     @Override
@@ -62,12 +71,20 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
         productFavorite.setUserId(userId);
         productFavorite.setProductId(productId);
         productFavorite.setDeleted(NOT_DELETED);
+        boolean favoriteCreated = true;
         try {
             productFavoriteMapper.insert(productFavorite);
         } catch (DuplicateKeyException exception) {
             // 同一用户重复收藏同一商品时保持幂等，唯一索引负责兜底防重。
+            favoriteCreated = false;
         }
-        runAfterCommit(() -> refreshFavoriteCacheAfterCommit(userId, productId, true));
+        boolean shouldSendHotEvent = favoriteCreated;
+        runAfterCommit(() -> {
+            refreshFavoriteCacheAfterCommit(userId, productId, true);
+            if (shouldSendHotEvent) {
+                sendHotEventQuietly(productId);
+            }
+        });
     }
 
     @Override
@@ -195,5 +212,17 @@ public class ProductFavoriteServiceImpl implements ProductFavoriteService {
                 action.run();
             }
         });
+    }
+
+    private void sendHotEventQuietly(Long productId) {
+        try {
+            productHotEventSender.send(new ProductHotEvent(
+                    UUID.randomUUID().toString(),
+                    productId,
+                    ProductHotAction.FAVORITE,
+                    LocalDateTime.now()));
+        } catch (RuntimeException exception) {
+            LOGGER.warn("send favorite product hot event failed, productId={}", productId, exception);
+        }
     }
 }

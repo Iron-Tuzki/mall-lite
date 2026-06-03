@@ -17,18 +17,27 @@ import com.tuzki.mall.cart.vo.CartItemVO;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.product.entity.Product;
 import com.tuzki.mall.product.entity.Sku;
+import com.tuzki.mall.product.hot.ProductHotAction;
+import com.tuzki.mall.product.hot.ProductHotEvent;
+import com.tuzki.mall.product.hot.ProductHotEventSender;
 import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.mapper.SkuMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 购物车业务默认实现，编排 Redis 实时状态、RabbitMQ 变更消息和商品最新信息查询。
  */
 @Service
 public class CartServiceImpl implements CartService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CartServiceImpl.class);
 
     private static final int ACTIVE_STATUS = 1;
     private static final int NOT_DELETED = 0;
@@ -38,28 +47,33 @@ public class CartServiceImpl implements CartService {
     private final SkuMapper skuMapper;
     private final ProductMapper productMapper;
     private final CartChangeMessageSender cartChangeMessageSender;
+    private final ProductHotEventSender productHotEventSender;
 
     public CartServiceImpl(CartCacheService cartCacheService,
                            CartItemMapper cartItemMapper,
                            SkuMapper skuMapper,
                            ProductMapper productMapper,
-                           CartChangeMessageSender cartChangeMessageSender) {
+                           CartChangeMessageSender cartChangeMessageSender,
+                           ProductHotEventSender productHotEventSender) {
         this.cartCacheService = cartCacheService;
         this.cartItemMapper = cartItemMapper;
         this.skuMapper = skuMapper;
         this.productMapper = productMapper;
         this.cartChangeMessageSender = cartChangeMessageSender;
+        this.productHotEventSender = productHotEventSender;
     }
 
     @Override
     public void add(Long userId, CartAddRequest request) {
         ensureCacheLoaded(userId);
         Sku sku = getSku(request.getSkuId());
-        getProduct(sku.getProductId());
+        Product product = getProduct(sku.getProductId());
         try {
             // sugus:添加到缓存中，然后发布消息
             publish(userId, request.getSkuId(), cartCacheService.add(userId, request.getSkuId(), request.getQuantity()),
                     CartChangeOperation.UPSERT);
+            // 发送热点时间
+            sendHotEventQuietly(product.getId());
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(400, exception.getMessage());
         }
@@ -181,5 +195,17 @@ public class CartServiceImpl implements CartService {
 
     private boolean isActive(Integer status, Integer deleted) {
         return status != null && status == ACTIVE_STATUS && deleted != null && deleted == NOT_DELETED;
+    }
+
+    private void sendHotEventQuietly(Long productId) {
+        try {
+            productHotEventSender.send(new ProductHotEvent(
+                    UUID.randomUUID().toString(),
+                    productId,
+                    ProductHotAction.CART_ADD,
+                    LocalDateTime.now()));
+        } catch (RuntimeException exception) {
+            LOGGER.warn("send cart add product hot event failed, productId={}", productId, exception);
+        }
     }
 }

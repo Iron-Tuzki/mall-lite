@@ -54,6 +54,24 @@ mall:
       detail-ttl-minutes: 30
       detail-random-ttl-minutes: 5
       detail-null-ttl-minutes: 5
+    hot:
+      hour-key-prefix: "mall:product:hot:hour:"
+      homepage-key: "mall:product:hot:homepage"
+      temporary-key: "mall:product:hot:homepage:tmp"
+      bucket-ttl-hours: 48
+      homepage-ttl-minutes: 15
+      view-dedup-ttl-minutes: 5
+      aggregation-fixed-delay-ms: 300000
+      aggregation-limit: 50
+      window-hours: 24
+    hot-rabbit:
+      event-exchange: mall.product.hot.event.exchange
+      event-queue: mall.product.hot.event.queue
+      event-routing-key: mall.product.hot.event.routing-key
+      failed-exchange: mall.product.hot.failed.exchange
+      failed-queue: mall.product.hot.failed.queue
+      failed-routing-key: mall.product.hot.failed.routing-key
+      confirm-timeout-seconds: 3
   order:
     rabbit:
       delay-exchange: mall.order.delay.exchange
