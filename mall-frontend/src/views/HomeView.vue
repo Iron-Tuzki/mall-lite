@@ -8,6 +8,7 @@ import {
   batchProductFavoriteStatus,
   cancelFavoriteProduct,
   favoriteProduct,
+  listHotProducts,
   scrollRecommendProducts,
   type ProductSummary
 } from '@/api/product';
@@ -52,7 +53,9 @@ const fallbackProducts: ProductCardData[] = [
 ];
 
 const products = ref<ProductCardData[]>([]);
+const hotProducts = ref<ProductCardData[]>([]);
 const loading = ref(false);
+const hotLoading = ref(false);
 const loadingMore = ref(false);
 const finished = ref(false);
 const pageSize = 6;
@@ -63,7 +66,7 @@ const loadMoreTrigger = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
 
 onMounted(async () => {
-  await loadRecommendProducts(true);
+  await Promise.all([loadRecommendProducts(true), loadHotProducts()]);
   await nextTick();
   observeLoadMoreTrigger();
   window.addEventListener('scroll', handleWindowScroll, { passive: true });
@@ -76,7 +79,19 @@ onBeforeUnmount(() => {
 });
 
 async function refreshProducts() {
-  await loadRecommendProducts(true);
+  await Promise.all([loadRecommendProducts(true), loadHotProducts()]);
+}
+
+async function loadHotProducts() {
+  hotLoading.value = true;
+  try {
+    const response = await listHotProducts({ limit: 6 });
+    hotProducts.value = response.data.data.map((product, index) => toHotProductCard(product, index));
+  } catch {
+    hotProducts.value = [];
+  } finally {
+    hotLoading.value = false;
+  }
 }
 
 async function loadNextPage() {
@@ -212,6 +227,18 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
     badge: index < 2 ? '推荐' : undefined
   };
 }
+
+function toHotProductCard(product: ProductSummary, index: number): ProductCardData {
+  return {
+    id: product.id,
+    name: product.name,
+    subtitle: product.subtitle || '正在热卖',
+    price: product.minPrice ?? 0,
+    buyers: (product.id % 90) + 10,
+    imageUrl: product.mainImageUrl || fallbackImages[index % fallbackImages.length],
+    badge: index < 3 ? '热门' : undefined
+  };
+}
 </script>
 
 <template>
@@ -262,22 +289,38 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
           </div>
         </div>
 
-        <div class="small-card">
-          <strong>淘江湖</strong>
-          <p>#来波回忆杀# 一起找寻商品的珍贵记忆</p>
-        </div>
-        <div class="small-card image-card">
-          <strong>直播精选</strong>
-          <p>好物推荐</p>
-        </div>
-        <div class="small-card">
-          <strong>淘工厂</strong>
-          <p>源头好货，超低价</p>
-        </div>
-        <div class="small-card">
-          <strong>低价专区</strong>
-          <p>每天都有新惊喜</p>
-        </div>
+        <section class="hot-products-panel" @click="router.push('/hot-products')">
+          <div class="hot-products-head">
+            <div>
+              <strong>热门商品</strong>
+              <p>根据浏览、收藏、加购和支付动态排序</p>
+            </div>
+            <RouterLink class="view-all-link" to="/hot-products" @click.stop>查看全部</RouterLink>
+          </div>
+
+          <div v-loading="hotLoading" class="hot-product-strip">
+            <RouterLink
+              v-for="product in hotProducts"
+              :key="product.id"
+              class="hot-product-card"
+              :to="`/product/${product.id}`"
+              @click.stop
+            >
+              <img :alt="product.name" :src="product.imageUrl" />
+              <span v-if="product.badge">{{ product.badge }}</span>
+              <div>
+                <h3>{{ product.name }}</h3>
+                <strong>¥{{ product.price }}</strong>
+              </div>
+            </RouterLink>
+
+            <el-empty
+              v-if="!hotLoading && hotProducts.length === 0"
+              description="暂无热门商品"
+              :image-size="56"
+            />
+          </div>
+        </section>
       </div>
 
       <UserPanel />
@@ -350,7 +393,7 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
 
 .banner-card,
 .deal-card,
-.small-card {
+.hot-products-panel {
   overflow: hidden;
   background: #fff;
   border-radius: 8px;
@@ -435,29 +478,98 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
   font-weight: 900;
 }
 
-.small-card {
-  min-height: 122px;
+.hot-products-panel {
+  grid-column: 1 / -1;
+  min-height: 232px;
   padding: 18px;
+  cursor: pointer;
 }
 
-.small-card strong {
-  font-size: 18px;
+.hot-products-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
 }
 
-.small-card p {
-  color: #555;
-  line-height: 1.7;
+.hot-products-head strong {
+  color: #202124;
+  font-size: 20px;
 }
 
-.image-card {
+.hot-products-head p {
+  margin: 6px 0 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.view-all-link {
+  color: #ff4d00;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.hot-product-strip {
+  display: grid;
+  min-height: 146px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hot-product-card {
+  position: relative;
+  overflow: hidden;
+  color: #202124;
+  background: #f7f8fb;
+  border-radius: 8px;
+}
+
+.hot-product-card img {
+  width: 100%;
+  aspect-ratio: 1 / 0.72;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.hot-product-card:hover img {
+  transform: scale(1.04);
+}
+
+.hot-product-card > span {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 3px 7px;
   color: #fff;
-  background:
-    linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.28)),
-    url("https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=520&q=80") center / cover;
+  background: #ff4d00;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 900;
 }
 
-.image-card p {
-  color: #fff;
+.hot-product-card div {
+  padding: 8px 10px 10px;
+}
+
+.hot-product-card h3 {
+  margin: 0 0 6px;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hot-product-card strong {
+  color: #ff4d00;
+  font-size: 17px;
+}
+
+.hot-product-strip :deep(.el-empty) {
+  grid-column: 1 / -1;
+  padding: 10px 0;
 }
 
 .product-heading {
@@ -500,6 +612,10 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
   .product-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .hot-product-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
@@ -518,12 +634,22 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
     grid-template-columns: 1fr;
   }
 
+  .hot-product-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 520px) {
+  .hot-products-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hot-product-strip,
   .product-grid {
     grid-template-columns: 1fr;
   }

@@ -86,6 +86,10 @@ export function scrollRecommendProducts(params?: { pageSize?: number; lastSort?:
   return http.get<Result<CursorPageResult<ProductSummary>>>('/api/products/recommend/scroll', { params });
 }
 
+export function listHotProducts(params?: { limit?: number }) {
+  return http.get<Result<ProductSummary[]>>('/api/products/hot', { params });
+}
+
 export function getProductDetail(productId: number) {
   return http.get<Result<ProductDetail>>(`/api/products/${productId}`);
 }

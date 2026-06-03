@@ -15,6 +15,8 @@ import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
 import org.redisson.client.protocol.ScoredEntry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -39,6 +41,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ProductHotServiceImpl implements ProductHotService {
+
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProductHotServiceImpl.class);
 
     private static final String VIEW_DEDUP_PREFIX = "mall:product:hot:view:dedup:";
 
@@ -125,8 +130,12 @@ public class ProductHotServiceImpl implements ProductHotService {
 
     @Override
     public void aggregateHomepageHotProducts() {
+        long begin = System.currentTimeMillis();
         var temporaryBucket = redissonClient.getScoredSortedSet(properties.getTemporaryKey(), StringCodec.INSTANCE);
         temporaryBucket.delete();
+        // Redisson 的 union(Map<key, weight>) 会在 Redis 服务端完成加权并集，
+        // 等价于取最近 24 个小时桶，将每个桶分数乘以对应权重后按商品 id 聚合求和，
+        // 聚合结果写入临时榜单
         int total = temporaryBucket.union(buildAggregationWeights());
         int overflowCount = total - properties.getAggregationLimit();
         if (overflowCount > 0) {
@@ -135,6 +144,8 @@ public class ProductHotServiceImpl implements ProductHotService {
         temporaryBucket.expire(Duration.ofMinutes(properties.getHomepageTtlMinutes()));
         //聚合完成后再替换正式榜单，避免首页读取到半成品。
         temporaryBucket.rename(properties.getHomepageKey());
+        long end = System.currentTimeMillis();
+        LOGGER.info("热门商品聚合统计定时任务耗时：{}", (end - begin));
     }
 
     @Override
