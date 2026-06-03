@@ -1,7 +1,10 @@
 package com.tuzki.mall.product.scheduling;
 
 import com.tuzki.mall.product.service.ProductHotService;
+import com.tuzki.mall.product.service.impl.ProductHotServiceImpl;
 import com.tuzki.mall.scheduling.lock.RedisDistributedLock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +13,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ProductHotAggregationTask {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProductHotAggregationTask.class);
 
     private static final String LOCK_KEY = "mall:product:hot-aggregation";
 
@@ -28,6 +33,9 @@ public class ProductHotAggregationTask {
     )
     @RedisDistributedLock(LOCK_KEY)
     public void aggregateHomepageHotProducts() {
+        long begin = System.currentTimeMillis();
         productHotService.aggregateHomepageHotProducts();
+        long end = System.currentTimeMillis();
+        LOGGER.info("热门商品聚合统计定时任务耗时：{}", (end - begin));
     }
 }

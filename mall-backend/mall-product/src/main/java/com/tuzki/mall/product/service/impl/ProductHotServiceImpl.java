@@ -43,7 +43,6 @@ import java.util.stream.Collectors;
 public class ProductHotServiceImpl implements ProductHotService {
 
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ProductHotServiceImpl.class);
 
     private static final String VIEW_DEDUP_PREFIX = "mall:product:hot:view:dedup:";
 
@@ -130,7 +129,6 @@ public class ProductHotServiceImpl implements ProductHotService {
 
     @Override
     public void aggregateHomepageHotProducts() {
-        long begin = System.currentTimeMillis();
         var temporaryBucket = redissonClient.getScoredSortedSet(properties.getTemporaryKey(), StringCodec.INSTANCE);
         temporaryBucket.delete();
         // Redisson 的 union(Map<key, weight>) 会在 Redis 服务端完成加权并集，
@@ -144,8 +142,6 @@ public class ProductHotServiceImpl implements ProductHotService {
         temporaryBucket.expire(Duration.ofMinutes(properties.getHomepageTtlMinutes()));
         //聚合完成后再替换正式榜单，避免首页读取到半成品。
         temporaryBucket.rename(properties.getHomepageKey());
-        long end = System.currentTimeMillis();
-        LOGGER.info("热门商品聚合统计定时任务耗时：{}", (end - begin));
     }
 
     @Override
