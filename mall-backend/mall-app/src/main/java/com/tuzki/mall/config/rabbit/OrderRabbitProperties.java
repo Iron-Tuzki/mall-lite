@@ -1,6 +1,10 @@
 package com.tuzki.mall.config.rabbit;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import static com.tuzki.mall.config.rabbit.RabbitPropertiesValidationSupport.requirePositive;
+import static com.tuzki.mall.config.rabbit.RabbitPropertiesValidationSupport.requireText;
 
 /**
  * 订单 RabbitMQ 配置属性，集中维护订单超时取消相关的交换机、队列、路由键和超时时间。
@@ -27,6 +31,23 @@ public class OrderRabbitProperties {
     private String failedRoutingKey = "mall.order.failed.routing-key";
 
     private Integer timeoutMinutes = 30;
+
+    /**
+     * 校验订单 RabbitMQ 配置，避免空交换机、空队列、空路由键或非法超时时间进入运行期。
+     */
+    @PostConstruct
+    public void validate() {
+        requireText(delayExchange, "订单延迟交换机不能为空");
+        requireText(delayQueue, "订单延迟队列不能为空");
+        requireText(delayRoutingKey, "订单延迟路由键不能为空");
+        requireText(cancelExchange, "订单取消交换机不能为空");
+        requireText(cancelQueue, "订单取消队列不能为空");
+        requireText(cancelRoutingKey, "订单取消路由键不能为空");
+        requireText(failedExchange, "订单失败交换机不能为空");
+        requireText(failedQueue, "订单失败队列不能为空");
+        requireText(failedRoutingKey, "订单失败路由键不能为空");
+        requirePositive(timeoutMinutes, "订单超时时间必须大于 0");
+    }
 
     public String getDelayExchange() {
         return delayExchange;

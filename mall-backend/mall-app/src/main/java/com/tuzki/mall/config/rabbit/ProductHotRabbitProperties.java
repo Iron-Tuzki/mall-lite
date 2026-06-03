@@ -1,6 +1,10 @@
 package com.tuzki.mall.config.rabbit;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+
+import static com.tuzki.mall.config.rabbit.RabbitPropertiesValidationSupport.requirePositive;
+import static com.tuzki.mall.config.rabbit.RabbitPropertiesValidationSupport.requireText;
 
 /**
  * 商品热点 RabbitMQ 配置属性，集中维护热点事件交换机、队列、路由键和 Confirm 超时时间。
@@ -21,6 +25,20 @@ public class ProductHotRabbitProperties {
     private String failedRoutingKey = "mall.product.hot.failed.routing-key";
 
     private Integer confirmTimeoutSeconds = 3;
+
+    /**
+     * 校验商品热点 RabbitMQ 配置，避免空交换机、空队列、空路由键或非法 Confirm 超时时间进入运行期。
+     */
+    @PostConstruct
+    public void validate() {
+        requireText(eventExchange, "商品热点事件交换机不能为空");
+        requireText(eventQueue, "商品热点事件队列不能为空");
+        requireText(eventRoutingKey, "商品热点事件路由键不能为空");
+        requireText(failedExchange, "商品热点失败交换机不能为空");
+        requireText(failedQueue, "商品热点失败队列不能为空");
+        requireText(failedRoutingKey, "商品热点失败路由键不能为空");
+        requirePositive(confirmTimeoutSeconds, "商品热点消息 Confirm 超时时间必须大于 0");
+    }
 
     public String getEventExchange() {
         return eventExchange;

@@ -7,6 +7,7 @@ import com.tuzki.mall.product.mapper.CategoryMapper;
 import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.mapper.SkuMapper;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -45,6 +46,11 @@ class ProductApiIntegrationTest {
     private RedissonClient redissonClient;
 
     private Long cachedProductId;
+
+    @BeforeEach
+    void clearHotProductsBeforeTest() {
+        redissonClient.getScoredSortedSet("mall:product:hot:homepage", StringCodec.INSTANCE).delete();
+    }
 
     @AfterEach
     void clearProductDetailCache() {
