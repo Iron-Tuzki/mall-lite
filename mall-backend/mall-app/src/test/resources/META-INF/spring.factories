@@ -1,0 +1,2 @@
+org.springframework.test.context.TestExecutionListener=\
+com.tuzki.mall.test.RedisTestIsolationListener

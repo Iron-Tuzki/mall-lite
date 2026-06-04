@@ -135,6 +135,10 @@ public class ProductHotServiceImpl implements ProductHotService {
         // 等价于取最近 24 个小时桶，将每个桶分数乘以对应权重后按商品 id 聚合求和，
         // 聚合结果写入临时榜单
         int total = temporaryBucket.union(buildAggregationWeights());
+        if (total <= 0) {
+            redissonClient.getScoredSortedSet(properties.getHomepageKey(), StringCodec.INSTANCE).delete();
+            return;
+        }
         int overflowCount = total - properties.getAggregationLimit();
         if (overflowCount > 0) {
             temporaryBucket.removeRangeByRank(0, overflowCount - 1);

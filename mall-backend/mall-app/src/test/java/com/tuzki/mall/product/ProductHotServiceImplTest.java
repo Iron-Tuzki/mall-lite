@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -125,6 +126,32 @@ class ProductHotServiceImplTest {
         verify(temporaryBucket).removeRangeByRank(0, 9);
         verify(temporaryBucket).expire(Duration.ofMinutes(15));
         verify(temporaryBucket).rename(properties.getHomepageKey());
+    }
+
+    @Test
+    void aggregateHomepageHotProductsDeletesHomepageBucketWhenRecentBucketsAreEmpty() {
+        RedissonClient redissonClient = mock(RedissonClient.class);
+        RScoredSortedSet<String> temporaryBucket = mock(RScoredSortedSet.class);
+        RScoredSortedSet<String> homepageBucket = mock(RScoredSortedSet.class);
+        ProductHotProperties properties = hotProperties();
+        when(redissonClient.<String>getScoredSortedSet(properties.getTemporaryKey(), org.redisson.client.codec.StringCodec.INSTANCE))
+                .thenReturn(temporaryBucket);
+        when(redissonClient.<String>getScoredSortedSet(properties.getHomepageKey(), org.redisson.client.codec.StringCodec.INSTANCE))
+                .thenReturn(homepageBucket);
+        when(temporaryBucket.union(anyMap())).thenReturn(0);
+
+        ProductHotServiceImpl service = new ProductHotServiceImpl(
+                redissonClient,
+                mock(ProductHotEventSender.class),
+                mock(ProductMapper.class),
+                mock(SkuMapper.class),
+                properties);
+
+        service.aggregateHomepageHotProducts();
+
+        verify(homepageBucket).delete();
+        verify(temporaryBucket, never()).expire(any(Duration.class));
+        verify(temporaryBucket, never()).rename(properties.getHomepageKey());
     }
 
     @Test
