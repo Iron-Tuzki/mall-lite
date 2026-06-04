@@ -48,6 +48,19 @@ springdoc:
     path: /v3/api-docs
 
 mall:
+  sentinel:
+    enabled: true
+    project-name: mall-lite
+    dashboard-server: localhost:8858
+    api-port: 8719
+    hot-product-detail:
+      enabled: true
+      flow-qps: 2
+      slow-request-rt-ms: 500
+      slow-request-ratio: 0.5
+      min-request-amount: 5
+      stat-interval-ms: 10000
+      time-window-seconds: 10
   product:
     cache:
       detail-key-prefix: "mall:product:detail:"

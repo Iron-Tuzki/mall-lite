@@ -1,6 +1,9 @@
 package com.tuzki.mall.product.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.alibaba.csp.sentinel.annotation.SentinelResource;
+import com.alibaba.csp.sentinel.slots.block.BlockException;
+import com.alibaba.csp.sentinel.slots.block.degrade.DegradeException;
 import com.tuzki.mall.common.api.CursorPageResult;
 import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.exception.BusinessException;
@@ -10,6 +13,7 @@ import com.tuzki.mall.product.entity.Sku;
 import com.tuzki.mall.product.mapper.CategoryMapper;
 import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.mapper.SkuMapper;
+import com.tuzki.mall.product.sentinel.ProductHotSentinelResources;
 import com.tuzki.mall.product.service.ProductCatalogService;
 import com.tuzki.mall.product.service.ProductDetailCacheService;
 import com.tuzki.mall.product.service.ProductHotDetailCacheService;
@@ -17,6 +21,8 @@ import com.tuzki.mall.product.vo.CategoryVO;
 import com.tuzki.mall.product.vo.ProductDetailVO;
 import com.tuzki.mall.product.vo.ProductSummaryVO;
 import com.tuzki.mall.product.vo.SkuVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -27,6 +33,9 @@ import java.util.List;
  */
 @Service
 public class ProductCatalogServiceImpl implements ProductCatalogService {
+
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProductCatalogServiceImpl.class);
 
     private static final int ACTIVE_STATUS = 1;
 
@@ -145,6 +154,11 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
     }
 
     @Override
+    @SentinelResource(
+            value = ProductHotSentinelResources.HOT_PRODUCT_DETAIL,
+            blockHandler = "handleHotProductDetailBlocked", // 触发限流、熔断降级都会走这个方法
+            fallback = "handleHotProductDetailFallback", // 其他异常走这个方法，BusinessException走原有逻辑，比如抛出异常
+            exceptionsToIgnore = BusinessException.class)
     public ProductDetailVO getHotProductById(Long productId) {
         ProductDetailVO productDetailVO = productHotDetailCacheService.getOrLoad(
                 productId,
@@ -153,6 +167,18 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
             throw new BusinessException(404, "product not found");
         }
         return productDetailVO;
+    }
+
+    public ProductDetailVO handleHotProductDetailBlocked(Long productId, BlockException exception) {
+        LOGGER.info("商品[{}]触发blockHandler",productId);
+        if (exception instanceof DegradeException) {
+            throw new BusinessException(503, "hot product detail degraded");
+        }
+        throw new BusinessException(429, "hot product detail is busy");
+    }
+
+    public ProductDetailVO handleHotProductDetailFallback(Long productId, Throwable throwable) {
+        throw new BusinessException(503, "hot product detail degraded");
     }
 
     @Override

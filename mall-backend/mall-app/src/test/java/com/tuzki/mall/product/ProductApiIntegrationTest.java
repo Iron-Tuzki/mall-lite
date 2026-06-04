@@ -1,5 +1,8 @@
 package com.tuzki.mall.product;
 
+import com.alibaba.csp.sentinel.slots.block.RuleConstant;
+import com.alibaba.csp.sentinel.slots.block.flow.FlowRule;
+import com.alibaba.csp.sentinel.slots.block.flow.FlowRuleManager;
 import com.tuzki.mall.product.entity.Category;
 import com.tuzki.mall.product.entity.Product;
 import com.tuzki.mall.product.entity.Sku;
@@ -18,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,6 +58,7 @@ class ProductApiIntegrationTest {
 
     @AfterEach
     void clearProductDetailCache() {
+        FlowRuleManager.loadRules(List.of());
         if (cachedProductId != null) {
             redissonClient.getBucket("mall:product:detail:" + cachedProductId).delete();
             redissonClient.getBucket("mall:product:hot:detail:" + cachedProductId).delete();
@@ -266,6 +271,25 @@ class ProductApiIntegrationTest {
         String cacheValue = redissonClient.<String>getBucket(
                 "mall:product:hot:detail:" + productId, StringCodec.INSTANCE).get();
         assertTrue(cacheValue != null && cacheValue.contains("Hot Detail Product " + suffix));
+    }
+
+    @Test
+    void hotProductDetailApiReturnsBusyResultWhenSentinelFlowControlTriggered() throws Exception {
+        long suffix = System.nanoTime();
+        Long categoryId = insertCategory("Hot Sentinel " + suffix);
+        Long productId = insertProduct(categoryId, "HSN" + suffix, "Hot Sentinel Product " + suffix);
+        cachedProductId = productId;
+        insertSku(productId, "HSNS" + suffix, "Hot Sentinel SKU", new BigDecimal("88.80"));
+        FlowRule flowRule = new FlowRule("hot-product-detail");
+        flowRule.setGrade(RuleConstant.FLOW_GRADE_QPS);
+        flowRule.setCount(0);
+        FlowRuleManager.loadRules(List.of(flowRule));
+
+        mockMvc.perform(get("/api/products/hot/{productId}", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(429))
+                .andExpect(jsonPath("$.message").value("hot product detail is busy"));
     }
 
     private Long insertCategory(String name) {
