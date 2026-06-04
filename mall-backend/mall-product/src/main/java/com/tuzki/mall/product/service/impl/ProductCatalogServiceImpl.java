@@ -12,6 +12,7 @@ import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.mapper.SkuMapper;
 import com.tuzki.mall.product.service.ProductCatalogService;
 import com.tuzki.mall.product.service.ProductDetailCacheService;
+import com.tuzki.mall.product.service.ProductHotDetailCacheService;
 import com.tuzki.mall.product.vo.CategoryVO;
 import com.tuzki.mall.product.vo.ProductDetailVO;
 import com.tuzki.mall.product.vo.ProductSummaryVO;
@@ -45,12 +46,16 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
 
     private final ProductDetailCacheService productDetailCacheService;
 
+    private final ProductHotDetailCacheService productHotDetailCacheService;
+
     public ProductCatalogServiceImpl(CategoryMapper categoryMapper, ProductMapper productMapper, SkuMapper skuMapper,
-                                     ProductDetailCacheService productDetailCacheService) {
+                                     ProductDetailCacheService productDetailCacheService,
+                                     ProductHotDetailCacheService productHotDetailCacheService) {
         this.categoryMapper = categoryMapper;
         this.productMapper = productMapper;
         this.skuMapper = skuMapper;
         this.productDetailCacheService = productDetailCacheService;
+        this.productHotDetailCacheService = productHotDetailCacheService;
     }
 
     @Override
@@ -119,29 +124,34 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
 
     @Override
     public ProductDetailVO getProductById(Long productId) {
+        // 先从缓存中读取
         ProductDetailVO cachedProductDetailVO = productDetailCacheService.get(productId);
         if (cachedProductDetailVO != null) {
             return cachedProductDetailVO;
         }
+        // 空值缓存，直接返回，防止缓存穿透
         if (productDetailCacheService.isNullValueCached(productId)) {
             throw new BusinessException(404, "product not found");
         }
 
-        Product product = productMapper.selectOne(activeProductQuery()
-                .eq(Product::getId, productId));
-        if (product == null) {
-            productDetailCacheService.putNullValue(productId);
+        ProductDetailVO productDetailVO = loadProductDetailFromDatabase(productId);
+        if (productDetailVO == null) {
+            productDetailCacheService.putNullValue(productId); // 设置空值缓存
             throw new BusinessException(404, "product not found");
         }
 
-        ProductDetailVO productDetailVO = toProductDetailVO(product);
-        productDetailVO.setSkus(skuMapper.selectList(activeSkuQuery()
-                        .eq(Sku::getProductId, productId)
-                        .orderByDesc(Sku::getId))
-                .stream()
-                .map(this::toSkuVO)
-                .toList());
         productDetailCacheService.put(productId, productDetailVO);
+        return productDetailVO;
+    }
+
+    @Override
+    public ProductDetailVO getHotProductById(Long productId) {
+        ProductDetailVO productDetailVO = productHotDetailCacheService.getOrLoad(
+                productId,
+                () -> loadProductDetailFromDatabase(productId));
+        if (productDetailVO == null) {
+            throw new BusinessException(404, "product not found");
+        }
         return productDetailVO;
     }
 
@@ -165,6 +175,22 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
         return new LambdaQueryWrapper<Sku>()
                 .eq(Sku::getStatus, ACTIVE_STATUS)
                 .eq(Sku::getDeleted, NOT_DELETED);
+    }
+
+    private ProductDetailVO loadProductDetailFromDatabase(Long productId) {
+        Product product = productMapper.selectOne(activeProductQuery()
+                .eq(Product::getId, productId));
+        if (product == null) {
+            return null;
+        }
+        ProductDetailVO productDetailVO = toProductDetailVO(product);
+        productDetailVO.setSkus(skuMapper.selectList(activeSkuQuery()
+                        .eq(Sku::getProductId, productId)
+                        .orderByDesc(Sku::getId))
+                .stream()
+                .map(this::toSkuVO)
+                .toList());
+        return productDetailVO;
     }
 
     private LambdaQueryWrapper<Product> applyRecommendCursor(LambdaQueryWrapper<Product> queryWrapper,

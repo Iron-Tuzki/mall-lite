@@ -9,6 +9,7 @@ import {
   cancelFavoriteProduct,
   checkProductFavorite,
   favoriteProduct,
+  getHotProductDetail,
   getProductDetail,
   type ProductDetail,
   type SkuItem
@@ -21,6 +22,7 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const productId = computed(() => Number(route.params.id));
+const hotSource = computed(() => route.query.source === 'hot');
 const product = ref<ProductDetail | null>(null);
 const selectedSkuId = ref<number | null>(null);
 const quantity = ref(1);
@@ -41,7 +43,7 @@ onMounted(() => {
   loadProductDetail();
 });
 
-watch(productId, () => {
+watch([productId, hotSource], () => {
   loadProductDetail();
 });
 
@@ -51,7 +53,9 @@ async function loadProductDetail() {
   }
   loading.value = true;
   try {
-    const response = await getProductDetail(productId.value);
+    const response = hotSource.value
+      ? await getHotProductDetail(productId.value)
+      : await getProductDetail(productId.value);
     product.value = response.data.data;
     selectedSkuId.value = product.value.skus[0]?.id || null;
     await loadFavoriteStatus();

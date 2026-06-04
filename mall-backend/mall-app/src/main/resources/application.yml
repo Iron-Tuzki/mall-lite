@@ -51,9 +51,18 @@ mall:
   product:
     cache:
       detail-key-prefix: "mall:product:detail:"
+      hot-detail-key-prefix: "mall:product:hot:detail:"
+      hot-detail-lock-key-prefix: "mall:product:hot:detail:lock:"
       detail-ttl-minutes: 30
       detail-random-ttl-minutes: 5
       detail-null-ttl-minutes: 5
+      hot-detail-ttl-minutes: 30
+      hot-detail-random-ttl-minutes: 5
+      hot-detail-null-ttl-minutes: 5
+      hot-detail-lock-wait-seconds: 1
+      hot-detail-lock-lease-seconds: 10
+      hot-detail-lock-retry-times: 3
+      hot-detail-lock-retry-interval-ms: 50
     hot:
       hour-key-prefix: "mall:product:hot:hour:"
       homepage-key: "mall:product:hot:homepage"
@@ -61,7 +70,7 @@ mall:
       bucket-ttl-hours: 48
       homepage-ttl-minutes: 15
       view-dedup-ttl-minutes: 5
-      aggregation-fixed-delay-ms: 300000
+      aggregation-fixed-delay-ms: 1800000
       aggregation-limit: 50
       window-hours: 24
     hot-rabbit:

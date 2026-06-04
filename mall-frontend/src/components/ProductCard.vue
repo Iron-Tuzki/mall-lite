@@ -11,6 +11,7 @@ export interface ProductCardData {
   imageUrl: string;
   badge?: string;
   favorited?: boolean;
+  detailPath?: string;
 }
 
 const props = defineProps<{
@@ -21,7 +22,7 @@ const emit = defineEmits<{
   toggleFavorite: [product: ProductCardData];
 }>();
 
-const productLink = computed(() => `/product/${props.product.id}`);
+const productLink = computed(() => props.product.detailPath || `/product/${props.product.id}`);
 
 function handleFavoriteClick(event: MouseEvent) {
   event.preventDefault();

@@ -87,7 +87,8 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
     price: product.minPrice ?? 0,
     buyers: (product.id % 90) + 10,
     imageUrl: product.mainImageUrl || fallbackImages[index % fallbackImages.length],
-    badge: index < 3 ? `TOP ${index + 1}` : '热门'
+    badge: index < 3 ? `TOP ${index + 1}` : '热门',
+    detailPath: `/product/${product.id}?source=hot`
   };
 }
 </script>

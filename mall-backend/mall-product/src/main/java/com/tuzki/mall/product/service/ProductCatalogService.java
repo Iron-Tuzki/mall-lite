@@ -57,6 +57,14 @@ public interface ProductCatalogService {
     ProductDetailVO getProductById(Long productId);
 
     /**
+     * 根据商品 ID 查询热门商品详情，使用独立热门详情缓存保护高热访问路径。
+     *
+     * @param productId 商品 ID
+     * @return 商品详情和启用状态的 SKU 列表
+     */
+    ProductDetailVO getHotProductById(Long productId);
+
+    /**
      * 根据 SKU ID 查询启用状态的 SKU 信息。
      *
      * @param skuId SKU ID

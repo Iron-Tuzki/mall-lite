@@ -94,6 +94,10 @@ export function getProductDetail(productId: number) {
   return http.get<Result<ProductDetail>>(`/api/products/${productId}`);
 }
 
+export function getHotProductDetail(productId: number) {
+  return http.get<Result<ProductDetail>>(`/api/products/hot/${productId}`);
+}
+
 export function favoriteProduct(productId: number) {
   return http.post<Result<void>>(`/api/product-favorites/${productId}`);
 }

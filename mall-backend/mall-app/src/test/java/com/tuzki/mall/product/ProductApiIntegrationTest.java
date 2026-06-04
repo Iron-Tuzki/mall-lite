@@ -56,6 +56,7 @@ class ProductApiIntegrationTest {
     void clearProductDetailCache() {
         if (cachedProductId != null) {
             redissonClient.getBucket("mall:product:detail:" + cachedProductId).delete();
+            redissonClient.getBucket("mall:product:hot:detail:" + cachedProductId).delete();
         }
         redissonClient.getScoredSortedSet("mall:product:hot:homepage", StringCodec.INSTANCE).delete();
     }
@@ -245,6 +246,26 @@ class ProductApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.name").value("Cache Product " + suffix));
+    }
+
+    @Test
+    void hotProductDetailApiWritesIndependentHotDetailCache() throws Exception {
+        long suffix = System.nanoTime();
+        Long categoryId = insertCategory("Hot Detail " + suffix);
+        Long productId = insertProduct(categoryId, "HD" + suffix, "Hot Detail Product " + suffix);
+        cachedProductId = productId;
+        insertSku(productId, "HDS" + suffix, "Hot Detail SKU", new BigDecimal("77.70"));
+
+        mockMvc.perform(get("/api/products/hot/{productId}", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(productId))
+                .andExpect(jsonPath("$.data.name").value("Hot Detail Product " + suffix))
+                .andExpect(jsonPath("$.data.minPrice").value(77.70));
+
+        String cacheValue = redissonClient.<String>getBucket(
+                "mall:product:hot:detail:" + productId, StringCodec.INSTANCE).get();
+        assertTrue(cacheValue != null && cacheValue.contains("Hot Detail Product " + suffix));
     }
 
     private Long insertCategory(String name) {

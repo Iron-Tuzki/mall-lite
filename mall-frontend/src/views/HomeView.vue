@@ -236,7 +236,8 @@ function toHotProductCard(product: ProductSummary, index: number): ProductCardDa
     price: product.minPrice ?? 0,
     buyers: (product.id % 90) + 10,
     imageUrl: product.mainImageUrl || fallbackImages[index % fallbackImages.length],
-    badge: index < 3 ? '热门' : undefined
+    badge: index < 3 ? '热门' : undefined,
+    detailPath: `/product/${product.id}?source=hot`
   };
 }
 </script>
@@ -303,7 +304,7 @@ function toHotProductCard(product: ProductSummary, index: number): ProductCardDa
               v-for="product in hotProducts"
               :key="product.id"
               class="hot-product-card"
-              :to="`/product/${product.id}`"
+              :to="`/product/${product.id}?source=hot`"
               @click.stop
             >
               <img :alt="product.name" :src="product.imageUrl" />

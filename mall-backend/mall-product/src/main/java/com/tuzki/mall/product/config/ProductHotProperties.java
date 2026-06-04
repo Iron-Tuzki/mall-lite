@@ -24,7 +24,7 @@ public class ProductHotProperties {
 
     private int viewDedupTtlMinutes = 5;
 
-    private int aggregationFixedDelayMs = 300000;
+    private int aggregationFixedDelayMs = 1800000;
 
     private int aggregationLimit = 50;
 

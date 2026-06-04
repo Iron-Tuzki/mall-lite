@@ -67,6 +67,16 @@ public class ProductController {
         return Result.success(productHotService.listHotProducts(limit));
     }
 
+    @GetMapping("/hot/{productId}")
+    public Result<ProductDetailVO> getHotProductById(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
+            @PathVariable Long productId) {
+        ProductDetailVO productDetail = productCatalogService.getHotProductById(productId);
+        recordVisitQuietly(authorization, deviceId, productId);
+        return Result.success(productDetail);
+    }
+
     @GetMapping("/recommend/scroll")
     public Result<CursorPageResult<ProductSummaryVO>> scrollRecommendProducts(
             @RequestParam(required = false) Integer pageSize,
