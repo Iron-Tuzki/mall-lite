@@ -69,10 +69,10 @@ public class CartServiceImpl implements CartService {
         Sku sku = getSku(request.getSkuId());
         Product product = getProduct(sku.getProductId());
         try {
-            // sugus:添加到缓存中，然后发布消息
+            // sugus:先添加到缓存中，然后发布消息落地数据库
             publish(userId, request.getSkuId(), cartCacheService.add(userId, request.getSkuId(), request.getQuantity()),
                     CartChangeOperation.UPSERT);
-            // 发送热点时间
+            // 发送热点事件
             sendHotEventQuietly(product.getId());
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(400, exception.getMessage());
