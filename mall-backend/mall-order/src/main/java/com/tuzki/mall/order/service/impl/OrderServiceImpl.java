@@ -44,6 +44,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -106,6 +107,23 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     public OrderCreateVO createOrder(Long userId, OrderCreateRequest request) {
+        return createOrderInternal(userId, request, Map.of());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
+    public OrderCreateVO createOrderWithPriceOverrides(Long userId,
+                                                       OrderCreateRequest request,
+                                                       Map<Long, BigDecimal> priceOverrides) {
+        if (priceOverrides == null || priceOverrides.isEmpty()) {
+            throw new BusinessException(400, "price overrides must not be empty");
+        }
+        return createOrderInternal(userId, request, priceOverrides);
+    }
+
+    private OrderCreateVO createOrderInternal(Long userId,
+                                             OrderCreateRequest request,
+                                             Map<Long, BigDecimal> priceOverrides) {
         // todo 此处查询是否可以删除
         Order existingOrder = getExistingOrderByRequestId(userId, request.getRequestId());
         if (existingOrder != null) {
@@ -119,7 +137,7 @@ public class OrderServiceImpl implements OrderService {
         User user = getActiveUser(userId);
         Address address = getActiveAddress(user.getId(), request.getAddressId());
         List<OrderItemContext> itemContexts = buildItemContexts(request.getItems());
-        BigDecimal totalAmount = calculateTotalAmount(itemContexts);
+        BigDecimal totalAmount = calculateTotalAmount(itemContexts, priceOverrides);
 
         List<OrderItemContext> lockedItemContexts = new ArrayList<>();
         for (OrderItemContext itemContext : itemContexts) {
@@ -141,7 +159,12 @@ public class OrderServiceImpl implements OrderService {
         }
 
         for (OrderItemContext itemContext : itemContexts) {
-            OrderItem orderItem = buildOrderItem(itemContext.requestItem(), itemContext.sku(), itemContext.product(), order);
+            OrderItem orderItem = buildOrderItem(
+                    itemContext.requestItem(),
+                    itemContext.sku(),
+                    itemContext.product(),
+                    order,
+                    priceOverrides);
             orderItemMapper.insert(orderItem);
         }
         markOrderRequestSuccess(userId, request.getRequestId(), order.getId());
@@ -356,10 +379,10 @@ public class OrderServiceImpl implements OrderService {
         return itemContexts;
     }
 
-    private BigDecimal calculateTotalAmount(List<OrderItemContext> itemContexts) {
+    private BigDecimal calculateTotalAmount(List<OrderItemContext> itemContexts, Map<Long, BigDecimal> priceOverrides) {
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (OrderItemContext itemContext : itemContexts) {
-            BigDecimal itemAmount = itemContext.sku().getPrice()
+            BigDecimal itemAmount = resolveUnitPrice(itemContext.sku(), priceOverrides)
                     .multiply(BigDecimal.valueOf(itemContext.requestItem().getQuantity()));
             totalAmount = totalAmount.add(itemAmount);
         }
@@ -417,8 +440,13 @@ public class OrderServiceImpl implements OrderService {
         return order;
     }
 
-    private OrderItem buildOrderItem(OrderCreateItemRequest requestItem, Sku sku, Product product, Order order) {
-        BigDecimal totalAmount = sku.getPrice().multiply(BigDecimal.valueOf(requestItem.getQuantity()));
+    private OrderItem buildOrderItem(OrderCreateItemRequest requestItem,
+                                     Sku sku,
+                                     Product product,
+                                     Order order,
+                                     Map<Long, BigDecimal> priceOverrides) {
+        BigDecimal unitPrice = resolveUnitPrice(sku, priceOverrides);
+        BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(requestItem.getQuantity()));
         OrderItem orderItem = new OrderItem();
         orderItem.setOrderId(order.getId());
         orderItem.setOrderNo(order.getOrderNo());
@@ -429,11 +457,25 @@ public class OrderServiceImpl implements OrderService {
         orderItem.setSkuName(sku.getSkuName());
         orderItem.setSpecData(sku.getSpecData());
         orderItem.setMainImageUrl(resolveMainImageUrl(sku, product));
-        orderItem.setUnitPrice(sku.getPrice());
+        orderItem.setUnitPrice(unitPrice);
         orderItem.setQuantity(requestItem.getQuantity());
         orderItem.setTotalAmount(totalAmount);
         orderItem.setDeleted(NOT_DELETED);
         return orderItem;
+    }
+
+    private BigDecimal resolveUnitPrice(Sku sku, Map<Long, BigDecimal> priceOverrides) {
+        if (priceOverrides.isEmpty()) {
+            return sku.getPrice();
+        }
+        BigDecimal overridePrice = priceOverrides.get(sku.getId());
+        if (overridePrice == null) {
+            throw new BusinessException(400, "override price not found");
+        }
+        if (overridePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(400, "override price must be greater than 0");
+        }
+        return overridePrice;
     }
 
     private String resolveMainImageUrl(Sku sku, Product product) {

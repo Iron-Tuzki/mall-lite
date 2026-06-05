@@ -4,12 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tuzki.mall.TestSeedData;
 import com.tuzki.mall.inventory.entity.Inventory;
 import com.tuzki.mall.inventory.mapper.InventoryMapper;
+import com.tuzki.mall.order.dto.OrderCreateItemRequest;
+import com.tuzki.mall.order.dto.OrderCreateRequest;
 import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
 import com.tuzki.mall.order.entity.OrderRequest;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.mapper.OrderRequestMapper;
+import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.user.service.LoginSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -54,6 +58,9 @@ class OrderCreateApiIntegrationTest {
 
     @Autowired
     private LoginSessionService loginSessionService;
+
+    @Autowired
+    private OrderService orderService;
 
     @BeforeEach
     void setUp() {
@@ -149,6 +156,29 @@ class OrderCreateApiIntegrationTest {
         Inventory secondInventory = getInventory(TestSeedData.SKU_ID_2);
         assertEquals(997, secondInventory.getAvailableStock());
         assertEquals(3, secondInventory.getLockedStock());
+    }
+
+    @Test
+    void createOrderWithPriceOverridesUsesProvidedUnitPriceSnapshot() {
+        String requestId = newRequestId("override-price");
+        OrderCreateRequest request = buildOrderCreateRequest(requestId, 2, "override price order test");
+
+        orderService.createOrderWithPriceOverrides(
+                TestSeedData.USER_ID,
+                request,
+                Map.of(TestSeedData.SKU_ID, new BigDecimal("39.90")));
+
+        Order order = getOrderByRequestId(requestId);
+        assertEquals(new BigDecimal("79.80"), order.getTotalAmount());
+        assertEquals(new BigDecimal("79.80"), order.getPayAmount());
+
+        OrderItem orderItem = getOrderItem(order.getId());
+        assertEquals(new BigDecimal("39.90"), orderItem.getUnitPrice());
+        assertEquals(new BigDecimal("79.80"), orderItem.getTotalAmount());
+
+        Inventory inventory = getSeedInventory();
+        assertEquals(998, inventory.getAvailableStock());
+        assertEquals(2, inventory.getLockedStock());
     }
 
     @Test
@@ -379,6 +409,19 @@ class OrderCreateApiIntegrationTest {
                 }
                 """.formatted(requestId, TestSeedData.ADDRESS_ID,
                 TestSeedData.SKU_ID, TestSeedData.SKU_ID);
+    }
+
+    private OrderCreateRequest buildOrderCreateRequest(String requestId, Integer quantity, String remark) {
+        OrderCreateItemRequest itemRequest = new OrderCreateItemRequest();
+        itemRequest.setSkuId(TestSeedData.SKU_ID);
+        itemRequest.setQuantity(quantity);
+
+        OrderCreateRequest request = new OrderCreateRequest();
+        request.setRequestId(requestId);
+        request.setAddressId(TestSeedData.ADDRESS_ID);
+        request.setItems(List.of(itemRequest));
+        request.setRemark(remark);
+        return request;
     }
 
     private String bearerToken() {

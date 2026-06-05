@@ -5,8 +5,10 @@ import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.order.vo.OrderDetailVO;
 import com.tuzki.mall.order.vo.OrderMainVO;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 订单业务接口，负责创建订单以及后续订单状态流转。
@@ -21,6 +23,16 @@ public interface OrderService {
      * @return 创建后的订单核心信息
      */
     OrderCreateVO createOrder(Long userId, OrderCreateRequest request);
+
+    /**
+     * 使用调用方提供的 SKU 价格快照创建订单，适用于秒杀等特殊价格场景。
+     *
+     * @param userId 当前登录用户 ID，由登录态解析得到
+     * @param request 创建订单请求，包含收货地址 ID、幂等请求号、订单明细列表和备注
+     * @param priceOverrides SKU ID 到下单单价的映射，传入的 SKU 必须覆盖本次订单中的每个 SKU
+     * @return 创建后的订单核心信息
+     */
+    OrderCreateVO createOrderWithPriceOverrides(Long userId, OrderCreateRequest request, Map<Long, BigDecimal> priceOverrides);
 
     /**
      * 根据订单 ID 查询订单详情。
