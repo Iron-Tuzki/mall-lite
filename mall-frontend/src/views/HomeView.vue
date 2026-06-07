@@ -247,6 +247,7 @@ function toHotProductCard(product: ProductSummary, index: number): ProductCardDa
 
   <main class="home-page">
     <section class="page-shell channel-row" aria-label="频道导航">
+      <RouterLink to="/seckill">秒杀</RouterLink>
       <a v-for="channel in channels" :key="channel" href="#">{{ channel }}</a>
     </section>
 

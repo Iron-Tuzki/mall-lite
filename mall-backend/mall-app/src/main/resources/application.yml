@@ -111,6 +111,11 @@ mall:
       alert-fixed-delay-ms: 60000
       timeout-minutes: 30
       batch-size: 100
+  seckill:
+    preheat:
+      enabled: true
+      fixed-delay-ms: 60000
+      window-minutes: 10
   coupon:
     rabbit:
       coupon-reward-exchange: mall.coupon-reward.exchange

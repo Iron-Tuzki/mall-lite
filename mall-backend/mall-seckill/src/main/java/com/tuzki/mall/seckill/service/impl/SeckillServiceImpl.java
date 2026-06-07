@@ -91,6 +91,22 @@ public class SeckillServiceImpl implements SeckillService {
     }
 
     @Override
+    public List<Long> listPreheatableActivityIds(Duration preheatWindow) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime preheatBefore = now.plus(normalizePreheatWindow(preheatWindow));
+        return seckillActivityMapper.selectList(new LambdaQueryWrapper<SeckillActivity>()
+                        .select(SeckillActivity::getId)
+                        .eq(SeckillActivity::getStatus, ACTIVE_STATUS)
+                        .eq(SeckillActivity::getDeleted, NOT_DELETED)
+                        .le(SeckillActivity::getStartTime, preheatBefore)
+                        .gt(SeckillActivity::getEndTime, now)
+                        .orderByAsc(SeckillActivity::getStartTime))
+                .stream()
+                .map(SeckillActivity::getId)
+                .toList();
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public OrderCreateVO createSeckillOrder(Long userId, SeckillOrderCreateRequest request) {
         SeckillSku seckillSku = getActiveSeckillSku(request.getSeckillSkuId());
@@ -259,6 +275,13 @@ public class SeckillServiceImpl implements SeckillService {
         // 到期时间比活动时间多五分钟
         return Duration.between(LocalDateTime.now(), activity.getEndTime())
                 .plusMinutes(PREHEAT_TTL_EXTRA_MINUTES);
+    }
+
+    private Duration normalizePreheatWindow(Duration preheatWindow) {
+        if (preheatWindow == null || preheatWindow.isNegative()) {
+            return Duration.ZERO;
+        }
+        return preheatWindow;
     }
 
     private String resolveMainImageUrl(Sku sku, Product product) {

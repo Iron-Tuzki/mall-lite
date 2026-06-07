@@ -13,6 +13,7 @@ import com.tuzki.mall.seckill.entity.SeckillSku;
 import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
+import com.tuzki.mall.seckill.scheduling.SeckillPreheatTask;
 import com.tuzki.mall.user.service.LoginSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -73,6 +75,9 @@ class SeckillApiIntegrationTest {
 
     @Autowired
     private SeckillRedisService seckillRedisService;
+
+    @Autowired
+    private SeckillPreheatTask seckillPreheatTask;
 
     @BeforeEach
     void setUp() {
@@ -246,6 +251,59 @@ class SeckillApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true));
     }
 
+    @Test
+    void scheduledPreheatOnlyPreheatsCurrentAndSoonStartingActivities() {
+        LocalDateTime now = LocalDateTime.now();
+        SeckillSku currentSku = createSeckillSku(
+                "current seckill",
+                now.minusMinutes(5),
+                now.plusMinutes(30),
+                1,
+                new BigDecimal("39.90"),
+                2,
+                1);
+        SeckillSku soonSku = createSeckillSku(
+                "soon seckill",
+                now.plusMinutes(5),
+                now.plusMinutes(40),
+                1,
+                new BigDecimal("29.90"),
+                3,
+                1);
+        SeckillSku laterSku = createSeckillSku(
+                "later seckill",
+                now.plusMinutes(30),
+                now.plusMinutes(60),
+                1,
+                new BigDecimal("19.90"),
+                4,
+                1);
+        SeckillSku disabledSku = createSeckillSku(
+                "disabled seckill",
+                now.minusMinutes(5),
+                now.plusMinutes(30),
+                0,
+                new BigDecimal("9.90"),
+                5,
+                1);
+        SeckillSku endedSku = createSeckillSku(
+                "ended seckill",
+                now.minusMinutes(30),
+                now.minusMinutes(5),
+                1,
+                new BigDecimal("8.90"),
+                6,
+                1);
+
+        seckillPreheatTask.preheatUpcomingActivities();
+
+        assertEquals("2", readRedisStock(currentSku.getId()));
+        assertEquals("3", readRedisStock(soonSku.getId()));
+        assertEquals(null, readRedisStock(laterSku.getId()));
+        assertEquals(null, readRedisStock(disabledSku.getId()));
+        assertEquals(null, readRedisStock(endedSku.getId()));
+    }
+
     private void ensureSeckillTables() {
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS sms_seckill_activity
@@ -292,11 +350,29 @@ class SeckillApiIntegrationTest {
     }
 
     private SeckillSku createActiveSeckillSku(BigDecimal price, int stockCount, int limitQuantity) {
+        LocalDateTime now = LocalDateTime.now();
+        return createSeckillSku(
+                "test seckill",
+                now.minusMinutes(5),
+                now.plusMinutes(30),
+                1,
+                price,
+                stockCount,
+                limitQuantity);
+    }
+
+    private SeckillSku createSeckillSku(String name,
+                                        LocalDateTime startTime,
+                                        LocalDateTime endTime,
+                                        int status,
+                                        BigDecimal price,
+                                        int stockCount,
+                                        int limitQuantity) {
         SeckillActivity activity = new SeckillActivity();
-        activity.setName("test seckill");
-        activity.setStartTime(LocalDateTime.now().minusMinutes(5));
-        activity.setEndTime(LocalDateTime.now().plusMinutes(30));
-        activity.setStatus(1);
+        activity.setName(name);
+        activity.setStartTime(startTime);
+        activity.setEndTime(endTime);
+        activity.setStatus(status);
         activity.setDeleted(0);
         seckillActivityMapper.insert(activity);
 

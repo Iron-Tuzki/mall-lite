@@ -4,6 +4,7 @@ import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.seckill.dto.SeckillOrderCreateRequest;
 import com.tuzki.mall.seckill.vo.SeckillActivityVO;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -24,6 +25,14 @@ public interface SeckillService {
      * @param activityId 秒杀活动 ID
      */
     void preheatActivity(Long activityId);
+
+    /**
+     * 查询需要提前预热到 Redis 的秒杀活动 ID。
+     *
+     * @param preheatWindow 距离当前时间的预热窗口，窗口内即将开始且未结束的活动会被纳入预热范围
+     * @return 需要预热的秒杀活动 ID 列表
+     */
+    List<Long> listPreheatableActivityIds(Duration preheatWindow);
 
     /**
      * 创建秒杀订单。

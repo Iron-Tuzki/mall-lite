@@ -26,6 +26,11 @@ const router = createRouter({
       component: () => import('@/views/HotProductsView.vue')
     },
     {
+      path: '/seckill',
+      name: 'seckill',
+      component: () => import('@/views/SeckillView.vue')
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/LoginView.vue')
