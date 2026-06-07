@@ -22,6 +22,14 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface RegisterRequest {
+  username: string;
+  password: string;
+  nickname?: string;
+  phone?: string;
+  email?: string;
+}
+
 export interface LoginResult {
   token: string;
   user: UserProfile;
@@ -39,6 +47,10 @@ export interface SignInProfile {
 
 export function login(request: LoginRequest) {
   return http.post<Result<LoginResult>>('/api/users/login', request);
+}
+
+export function register(request: RegisterRequest) {
+  return http.post<Result<UserProfile>>('/api/users/register', request);
 }
 
 export function getCurrentUser() {

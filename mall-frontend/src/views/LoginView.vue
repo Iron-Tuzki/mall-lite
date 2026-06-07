@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Lock, User } from '@element-plus/icons-vue';
+import { Lock, Message, Phone, User } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
+import { register } from '@/api/user';
 import SiteHeader from '@/components/SiteHeader.vue';
 import { useAuthStore } from '@/stores/auth';
 
@@ -11,10 +12,15 @@ const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
 const loading = ref(false);
+const mode = ref<'login' | 'register'>('login');
 
 const form = reactive({
   username: '',
-  password: ''
+  password: '',
+  confirmPassword: '',
+  nickname: '',
+  phone: '',
+  email: ''
 });
 
 async function submitLogin() {
@@ -27,13 +33,58 @@ async function submitLogin() {
   try {
     await authStore.login(form.username.trim(), form.password);
     ElMessage.success('登录成功');
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/profile';
-    await router.replace(redirect);
+    await router.replace(resolveRedirect());
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '登录失败');
   } finally {
     loading.value = false;
   }
+}
+
+async function submitRegister() {
+  if (!form.username.trim() || !form.password) {
+    ElMessage.warning('请输入用户名和密码');
+    return;
+  }
+  if (form.password.length < 6) {
+    ElMessage.warning('密码长度至少 6 位');
+    return;
+  }
+  if (form.password !== form.confirmPassword) {
+    ElMessage.warning('两次输入的密码不一致');
+    return;
+  }
+
+  loading.value = true;
+  try {
+    const username = form.username.trim();
+    const password = form.password;
+    const response = await register({
+      username,
+      password,
+      nickname: form.nickname.trim() || undefined,
+      phone: form.phone.trim() || undefined,
+      email: form.email.trim() || undefined
+    });
+    if (!response.data.success) {
+      throw new Error(response.data.message || '注册失败');
+    }
+    await authStore.login(username, password);
+    ElMessage.success('注册成功');
+    await router.replace(resolveRedirect());
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '注册失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
+function resolveRedirect() {
+  return typeof route.query.redirect === 'string' ? route.query.redirect : '/profile';
+}
+
+function toggleMode() {
+  mode.value = mode.value === 'login' ? 'register' : 'login';
 }
 </script>
 
@@ -44,12 +95,26 @@ async function submitLogin() {
     <section class="login-panel">
       <div class="login-copy">
         <span class="eyebrow">Mall Lite</span>
-        <h1>欢迎回来</h1>
-        <p>登录后可以查看个人主页、订单、地址，后续购物车和下单也会复用这份登录态。</p>
+        <h1>{{ mode === 'login' ? '欢迎回来' : '创建你的账号' }}</h1>
+        <p>
+          {{ mode === 'login'
+            ? '登录后可以查看个人主页、订单、地址，并继续购物车和秒杀下单流程。'
+            : '注册后会自动登录，可以继续访问刚才的页面。手机号和邮箱可稍后再补充。' }}
+        </p>
       </div>
 
       <el-form class="login-form" @submit.prevent>
-        <h2>用户登录</h2>
+        <div class="form-head">
+          <h2>{{ mode === 'login' ? '用户登录' : '用户注册' }}</h2>
+          <el-segmented
+            v-model="mode"
+            :options="[
+              { label: '登录', value: 'login' },
+              { label: '注册', value: 'register' }
+            ]"
+          />
+        </div>
+
         <el-form-item>
           <el-input v-model="form.username" :prefix-icon="User" placeholder="用户名" size="large" />
         </el-form-item>
@@ -61,11 +126,44 @@ async function submitLogin() {
             show-password
             size="large"
             type="password"
-            @keyup.enter="submitLogin"
+            @keyup.enter="mode === 'login' ? submitLogin() : submitRegister()"
           />
         </el-form-item>
-        <el-button class="login-button" :loading="loading" size="large" type="primary" @click="submitLogin">
-          立即登录
+
+        <template v-if="mode === 'register'">
+          <el-form-item>
+            <el-input
+              v-model="form.confirmPassword"
+              :prefix-icon="Lock"
+              placeholder="确认密码"
+              show-password
+              size="large"
+              type="password"
+              @keyup.enter="submitRegister"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="form.nickname" :prefix-icon="User" placeholder="昵称，选填" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="form.phone" :prefix-icon="Phone" placeholder="手机号，选填" size="large" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="form.email" :prefix-icon="Message" placeholder="邮箱，选填" size="large" />
+          </el-form-item>
+        </template>
+
+        <el-button
+          class="login-button"
+          :loading="loading"
+          size="large"
+          type="primary"
+          @click="mode === 'login' ? submitLogin() : submitRegister()"
+        >
+          {{ mode === 'login' ? '立即登录' : '立即注册' }}
+        </el-button>
+        <el-button class="mode-link" text type="primary" @click="toggleMode">
+          {{ mode === 'login' ? '还没有账号？立即注册' : '已有账号？返回登录' }}
         </el-button>
       </el-form>
     </section>
@@ -125,8 +223,14 @@ async function submitLogin() {
   background: #fff;
 }
 
-.login-form h2 {
-  margin: 0 0 24px;
+.form-head {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.form-head h2 {
+  margin: 0;
 }
 
 .login-button {
@@ -136,6 +240,12 @@ async function submitLogin() {
   --el-button-hover-bg-color: #ff6a22;
   --el-button-hover-border-color: #ff6a22;
   font-weight: 800;
+}
+
+.mode-link {
+  justify-self: center;
+  margin-top: 12px;
+  font-weight: 700;
 }
 
 @media (max-width: 760px) {
