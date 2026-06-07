@@ -136,6 +136,7 @@ class SeckillApiIntegrationTest {
         assertEquals(99, inventory.getAvailableStock());
         assertEquals(1, inventory.getLockedStock());
         assertEquals("1", readRedisStock(seckillSku.getId()));
+        assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
     }
 
     @Test
@@ -224,6 +225,7 @@ class SeckillApiIntegrationTest {
                 .eq(Order::getUserId, TestSeedData.USER_ID)
                 .eq(Order::getRequestId, seckillRequestId(seckillSku.getId(), requestId))));
         assertEquals("1", readRedisStock(seckillSku.getId()));
+        assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
     }
 
     @Test
@@ -241,6 +243,7 @@ class SeckillApiIntegrationTest {
                 .andExpect(jsonPath("$.message").value("insufficient stock"));
 
         assertEquals("1", readRedisStock(seckillSku.getId()));
+        assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
 
         resetInventory(1, 0);
         mockMvc.perform(post("/api/seckill/orders")
@@ -249,6 +252,24 @@ class SeckillApiIntegrationTest {
                         .content(seckillOrderRequest(seckillSku.getId(), newRequestId("compensate-success"), 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void preheatKeepsExistingRedisStockAndOnlyRefreshesTtl() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
+        preheat(seckillSku.getActivityId());
+
+        mockMvc.perform(post("/api/seckill/orders")
+                        .header("Authorization", bearerToken())
+                        .contentType("application/json")
+                        .content(seckillOrderRequest(seckillSku.getId(), newRequestId("preheat-keep"), 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        assertEquals("1", readRedisStock(seckillSku.getId()));
+        preheat(seckillSku.getActivityId());
+        assertEquals("1", readRedisStock(seckillSku.getId()));
+        assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
     }
 
     @Test

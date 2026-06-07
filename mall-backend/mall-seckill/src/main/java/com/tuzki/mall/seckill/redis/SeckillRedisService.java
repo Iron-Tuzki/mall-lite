@@ -1,6 +1,5 @@
 package com.tuzki.mall.seckill.redis;
 
-import org.redisson.api.RBucket;
 import org.redisson.api.RScript;
 import org.redisson.api.RedissonClient;
 import org.redisson.client.codec.StringCodec;
@@ -24,6 +23,14 @@ public class SeckillRedisService {
     public static final long STOCK_SOLD_OUT = 3L;
 
     public static final long STOCK_NOT_PREHEATED = 4L;
+
+    private static final String PREHEAT_SCRIPT = """
+            if redis.call('EXISTS', KEYS[1]) == 0 then
+                redis.call('SET', KEYS[1], ARGV[1])
+            end
+            redis.call('EXPIRE', KEYS[1], ARGV[2])
+            return 1
+            """;
 
     private static final String PRE_DEDUCT_SCRIPT = """
             local stock = redis.call('GET', KEYS[1])
@@ -58,15 +65,21 @@ public class SeckillRedisService {
     }
 
     /**
-     * 将活动商品库存预热到 Redis，并设置到活动结束后的过期时间。
+     * 将活动商品库存预热到 Redis，并设置到活动结束后的过期时间。预热过则不再预热，仅更新缓存过期时间
      *
      * @param seckillSkuId 秒杀活动商品 ID
      * @param stockCount 活动库存数量
      * @param ttl Redis key 存活时间
      */
     public void preheatStock(Long seckillSkuId, Integer stockCount, Duration ttl) {
-        RBucket<String> bucket = redissonClient.getBucket(stockKey(seckillSkuId), StringCodec.INSTANCE);
-        bucket.set(String.valueOf(stockCount), normalizeTtl(ttl));
+        script().eval(
+                RScript.Mode.READ_WRITE,
+                PREHEAT_SCRIPT,
+                RScript.ReturnType.LONG,
+                List.of(stockKey(seckillSkuId)),
+                String.valueOf(stockCount),
+                String.valueOf(normalizeTtl(ttl).toSeconds())
+        );
     }
 
     /**

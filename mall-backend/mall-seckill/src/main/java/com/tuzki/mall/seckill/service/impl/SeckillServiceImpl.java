@@ -139,12 +139,17 @@ public class SeckillServiceImpl implements SeckillService {
         LOGGER.info("秒杀成功，请求={}，用户id=[{}]", request.getSeckillSkuId(), userId);
 
         // 预扣成功，目前是同步下订单
+        // 订单创建成功后再扣减活动商品库存；重复请求只查询原订单，不重复扣减。
         OrderCreateRequest orderRequest = buildOrderCreateRequest(request, seckillSku);
         try {
-            return orderService.createOrderWithPriceOverrides(
+            OrderCreateVO order = orderService.createOrderWithPriceOverrides(
                     userId,
                     orderRequest,
                     Map.of(seckillSku.getSkuId(), seckillSku.getSeckillPrice()));
+            if (preDeductResult == SeckillRedisService.PRE_DEDUCT_SUCCESS) {
+                deductSeckillStock(seckillSku.getId(), request.getQuantity());
+            }
+            return order;
         } catch (RuntimeException exception) {
             // 如果发生了异常，并且redis成功扣减，则补偿回redis，相当于回滚redis
             if (preDeductResult == SeckillRedisService.PRE_DEDUCT_SUCCESS) {
@@ -267,6 +272,13 @@ public class SeckillServiceImpl implements SeckillService {
             throw new BusinessException(400, "seckill stock not preheated");
         }
         throw new BusinessException(400, "seckill stock deduct failed");
+    }
+
+    private void deductSeckillStock(Long seckillSkuId, Integer quantity) {
+        int updatedRows = seckillSkuMapper.deductStock(seckillSkuId, quantity);
+        if (updatedRows != 1) {
+            throw new BusinessException(400, "seckill stock sold out");
+        }
     }
 
     private OrderCreateRequest buildOrderCreateRequest(SeckillOrderCreateRequest request, SeckillSku seckillSku) {

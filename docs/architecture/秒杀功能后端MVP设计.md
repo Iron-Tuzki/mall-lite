@@ -357,3 +357,48 @@ mall:seckill:user:{seckillSkuId}:{userId} - quantity，扣到 0 时删除
 4. 增加活动自动预热定时任务。
 5. 增加接口隐藏 URL、验证码、风控限流和用户维度访问频控。
 6. 前端增加秒杀列表、倒计时、抢购按钮状态和结果页。
+## 十三、库存一致性补充
+
+当前实现中，`sms_seckill_sku.stock_count` 表示秒杀活动商品的持久化剩余活动库存，Redis 的 `mall:seckill:stock:{seckillSkuId}` 表示活动期间用于高并发预扣的热库存。
+
+### 1. 预热策略
+
+活动预热支持后台手动触发和定时任务自动触发。定时任务会扫描已启用、未删除、未结束，并且开始时间落在预热窗口内的活动。
+
+预热写 Redis 时采用“存在则只续期，不存在才初始化”的策略：
+
+1. 如果 `mall:seckill:stock:{seckillSkuId}` 不存在，则使用 `sms_seckill_sku.stock_count` 初始化 Redis 活动库存。
+2. 如果 Redis 库存 key 已存在，则不覆盖当前 Redis 库存，只刷新 TTL 到活动结束后一小段时间。
+
+这样可以避免定时预热任务在活动进行中把已经被抢购扣减过的 Redis 库存重新刷回数据库旧值。
+
+### 2. 成功下单后的活动库存扣减
+
+秒杀请求的成功路径调整为：
+
+```text
+Redis Lua 原子预扣成功
+-> 调用订单模块创建待支付订单并锁定真实库存
+-> 订单创建成功后，原子扣减 sms_seckill_sku.stock_count
+-> 返回订单创建结果
+```
+
+`sms_seckill_sku.stock_count` 使用条件更新扣减：
+
+```sql
+UPDATE sms_seckill_sku
+   SET stock_count = stock_count - #{quantity},
+       update_time = NOW()
+ WHERE id = #{seckillSkuId}
+   AND status = 1
+   AND deleted = 0
+   AND stock_count >= #{quantity}
+```
+
+前面流程已经做过幂等处理，如果该更新影响行数不是 1，说明数据库侧活动库存不足或活动商品不可用，本次下单按 `seckill stock sold out` 失败处理，并触发 Redis 预扣补偿。
+
+### 3. 重复请求与补偿
+
+同一用户、同一活动商品、同一 `requestId` 重复请求时，Redis Lua 返回重复请求，不再重复扣减 Redis 活动库存，也不会重复扣减 `sms_seckill_sku.stock_count`，后续由订单模块幂等返回原订单。
+
+如果 Redis 预扣成功后，订单创建、真实库存锁定或活动库存持久扣减任一环节失败，当前事务回滚订单侧变更，并同步补偿 Redis 活动库存、用户限购占用和请求幂等标记。
