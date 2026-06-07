@@ -43,24 +43,25 @@ CREATE TABLE sms_seckill_sku
   COLLATE = utf8mb4_0900_ai_ci
   COMMENT = '秒杀活动商品表';
 
+# 维护秒杀活动表
 DELETE FROM sms_seckill_sku
 WHERE activity_id IN (
     SELECT id
     FROM sms_seckill_activity
-    WHERE name IN ('周末限时秒杀', '明日预热秒杀')
+    WHERE name IN ('今日限时秒杀', '明日预热秒杀')
 );
 DELETE FROM sms_seckill_activity
-WHERE name IN ('周末限时秒杀', '明日预热秒杀');
+WHERE name IN ('今日限时秒杀', '明日预热秒杀');
 
 INSERT INTO sms_seckill_activity (name, start_time, end_time, status, remark)
-VALUES ('周末限时秒杀', DATE_SUB(NOW(), INTERVAL 10 MINUTE), DATE_ADD(NOW(), INTERVAL 2 HOUR), 1, '用于前台秒杀页联调的进行中活动');
+VALUES ('今日限时秒杀', DATE_SUB(NOW(), INTERVAL 10 MINUTE), DATE_ADD(NOW(), INTERVAL 2 HOUR), 1, '用于前台秒杀页联调的进行中活动');
 SET @current_seckill_activity_id = LAST_INSERT_ID();
 
 INSERT INTO sms_seckill_sku (activity_id, sku_id, seckill_price, stock_count, limit_quantity, sort, status)
 SELECT @current_seckill_activity_id,
        s.id,
-       GREATEST(1.00, ROUND(s.price * 0.50, 2)),
-       20,
+       GREATEST(1.00, ROUND(s.price * 0.70, 2)),
+       2,
        1,
        ROW_NUMBER() OVER (ORDER BY s.id),
        1
@@ -71,7 +72,7 @@ ORDER BY s.id
 LIMIT 3;
 
 INSERT INTO sms_seckill_activity (name, start_time, end_time, status, remark)
-VALUES ('明日预热秒杀', DATE_ADD(NOW(), INTERVAL 5 MINUTE), DATE_ADD(NOW(), INTERVAL 3 HOUR), 1, '用于验证定时预热窗口的即将开始活动');
+VALUES ('明日预热秒杀', DATE_ADD(NOW(), INTERVAL 1 day ), DATE_ADD(NOW(), INTERVAL 2 day ), 1, '用于验证定时预热窗口的即将开始活动');
 SET @upcoming_seckill_activity_id = LAST_INSERT_ID();
 
 INSERT INTO sms_seckill_sku (activity_id, sku_id, seckill_price, stock_count, limit_quantity, sort, status)

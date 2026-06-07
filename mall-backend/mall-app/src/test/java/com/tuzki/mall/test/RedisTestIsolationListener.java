@@ -10,6 +10,8 @@ import org.springframework.test.context.support.AbstractTestExecutionListener;
  */
 public class RedisTestIsolationListener extends AbstractTestExecutionListener {
 
+    private static final String CLEAN_ENABLED_PROPERTY = "mall.test.redis.clean-enabled";
+
     private final RedisTestDataCleaner redisTestDataCleaner = new RedisTestDataCleaner();
 
     @Override
@@ -23,6 +25,12 @@ public class RedisTestIsolationListener extends AbstractTestExecutionListener {
     }
 
     private void clean(TestContext testContext) {
+        Boolean cleanEnabled = testContext.getApplicationContext()
+                .getEnvironment()
+                .getProperty(CLEAN_ENABLED_PROPERTY, Boolean.class, true);
+        if (!Boolean.TRUE.equals(cleanEnabled)) {
+            return;
+        }
         RedissonClient redissonClient;
         try {
             redissonClient = testContext.getApplicationContext().getBean(RedissonClient.class);

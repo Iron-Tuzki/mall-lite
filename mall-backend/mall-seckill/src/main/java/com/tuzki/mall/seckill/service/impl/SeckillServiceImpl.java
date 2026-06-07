@@ -19,6 +19,8 @@ import com.tuzki.mall.seckill.redis.SeckillRedisService;
 import com.tuzki.mall.seckill.service.SeckillService;
 import com.tuzki.mall.seckill.vo.SeckillActivityVO;
 import com.tuzki.mall.seckill.vo.SeckillSkuVO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +35,9 @@ import java.util.Objects;
  */
 @Service
 public class SeckillServiceImpl implements SeckillService {
+
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SeckillServiceImpl.class);
 
     private static final int ACTIVE_STATUS = 1;
 
@@ -125,9 +130,15 @@ public class SeckillServiceImpl implements SeckillService {
                 ttl);
         if (preDeductResult != SeckillRedisService.PRE_DEDUCT_SUCCESS
                 && preDeductResult != SeckillRedisService.DUPLICATED_REQUEST) {
+            String info = preDeductResult == SeckillRedisService.STOCK_SOLD_OUT ? "已售罄" :
+                    (preDeductResult == SeckillRedisService.PURCHASE_LIMIT_EXCEEDED ? "数量超过限购" : "库存未预热");
+            LOGGER.info("秒杀失败，原因=[{}]，请求={}，用户id=[{}]", info, request.getSeckillSkuId(), userId);
             throwPreDeductException(preDeductResult);
         }
 
+        LOGGER.info("秒杀成功，请求={}，用户id=[{}]", request.getSeckillSkuId(), userId);
+
+        // 预扣成功，目前是同步下订单
         OrderCreateRequest orderRequest = buildOrderCreateRequest(request, seckillSku);
         try {
             return orderService.createOrderWithPriceOverrides(
