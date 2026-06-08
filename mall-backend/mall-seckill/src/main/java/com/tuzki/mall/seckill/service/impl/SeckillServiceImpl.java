@@ -12,10 +12,12 @@ import com.tuzki.mall.product.mapper.ProductMapper;
 import com.tuzki.mall.product.mapper.SkuMapper;
 import com.tuzki.mall.seckill.dto.SeckillOrderCreateRequest;
 import com.tuzki.mall.seckill.entity.SeckillActivity;
+import com.tuzki.mall.seckill.entity.SeckillRequest;
 import com.tuzki.mall.seckill.entity.SeckillSku;
 import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
+import com.tuzki.mall.seckill.service.SeckillRequestLogService;
 import com.tuzki.mall.seckill.service.SeckillService;
 import com.tuzki.mall.seckill.vo.SeckillActivityVO;
 import com.tuzki.mall.seckill.vo.SeckillSkuVO;
@@ -55,6 +57,8 @@ public class SeckillServiceImpl implements SeckillService {
 
     private final SeckillRedisService seckillRedisService;
 
+    private final SeckillRequestLogService seckillRequestLogService;
+
     private final OrderService orderService;
 
     public SeckillServiceImpl(SeckillActivityMapper seckillActivityMapper,
@@ -62,12 +66,14 @@ public class SeckillServiceImpl implements SeckillService {
                               ProductMapper productMapper,
                               SkuMapper skuMapper,
                               SeckillRedisService seckillRedisService,
+                              SeckillRequestLogService seckillRequestLogService,
                               OrderService orderService) {
         this.seckillActivityMapper = seckillActivityMapper;
         this.seckillSkuMapper = seckillSkuMapper;
         this.productMapper = productMapper;
         this.skuMapper = skuMapper;
         this.seckillRedisService = seckillRedisService;
+        this.seckillRequestLogService = seckillRequestLogService;
         this.orderService = orderService;
     }
 
@@ -118,6 +124,14 @@ public class SeckillServiceImpl implements SeckillService {
         SeckillActivity activity = getActiveActivity(seckillSku.getActivityId());
         validateActivityTime(activity);
         validateQuantity(request, seckillSku);
+        // 新开事务抢幂等
+        SeckillRequestLogService.AcquireResult acquireResult =
+                seckillRequestLogService.acquire(userId, seckillSku, request.getRequestId(), request.getQuantity());
+        if (!acquireResult.created()) {
+            // 抢幂等失败则根据流水状态执行不同操作
+            return handleDuplicatedSeckillRequest(userId, request, seckillSku, acquireResult.request());
+        }
+        SeckillRequest requestLog = acquireResult.request();
 
         Duration ttl = ttlUntilActivityEnd(activity);
         // redis中预扣库存
@@ -133,7 +147,11 @@ public class SeckillServiceImpl implements SeckillService {
             String info = preDeductResult == SeckillRedisService.STOCK_SOLD_OUT ? "已售罄" :
                     (preDeductResult == SeckillRedisService.PURCHASE_LIMIT_EXCEEDED ? "数量超过限购" : "库存未预热");
             LOGGER.info("秒杀失败，原因=[{}]，请求={}，用户id=[{}]", info, request.getSeckillSkuId(), userId);
+            seckillRequestLogService.markFailed(requestLog.getId(), preDeductFailureMessage(preDeductResult));
             throwPreDeductException(preDeductResult);
+        }
+        if (preDeductResult == SeckillRedisService.PRE_DEDUCT_SUCCESS) {
+            seckillRequestLogService.markPreDeducted(requestLog.getId());
         }
 
         LOGGER.info("秒杀成功，请求={}，用户id=[{}]", request.getSeckillSkuId(), userId);
@@ -149,11 +167,15 @@ public class SeckillServiceImpl implements SeckillService {
             if (preDeductResult == SeckillRedisService.PRE_DEDUCT_SUCCESS) {
                 deductSeckillStock(seckillSku.getId(), request.getQuantity());
             }
+            seckillRequestLogService.markOrderCreated(requestLog.getId(), order.getOrderId());
             return order;
         } catch (RuntimeException exception) {
             // 如果发生了异常，并且redis成功扣减，则补偿回redis，相当于回滚redis
             if (preDeductResult == SeckillRedisService.PRE_DEDUCT_SUCCESS) {
                 seckillRedisService.compensate(seckillSku.getId(), userId, request.getRequestId(), request.getQuantity());
+                seckillRequestLogService.markCompensated(requestLog.getId(), exception.getMessage());
+            } else {
+                seckillRequestLogService.markFailed(requestLog.getId(), exception.getMessage());
             }
             throw exception;
         }
@@ -272,6 +294,52 @@ public class SeckillServiceImpl implements SeckillService {
             throw new BusinessException(400, "seckill stock not preheated");
         }
         throw new BusinessException(400, "seckill stock deduct failed");
+    }
+
+    private OrderCreateVO handleDuplicatedSeckillRequest(Long userId,
+                                                         SeckillOrderCreateRequest request,
+                                                         SeckillSku seckillSku,
+                                                         SeckillRequest requestLog) {
+        if (requestLog == null || requestLog.getStatus() == null) {
+            throw new BusinessException(409, "seckill request duplicated");
+        }
+        Integer status = requestLog.getStatus();
+        if (Integer.valueOf(SeckillRequest.STATUS_ORDER_CREATED).equals(status) && requestLog.getOrderId() != null) {
+            // 秒杀幂等表的状态为“订单已创建”则继续创建订单，接口中有防止重复请求的处理，会直接返回已生成的订单
+            return orderService.createOrderWithPriceOverrides(
+                    userId,
+                    buildOrderCreateRequest(request, seckillSku),
+                    Map.of(seckillSku.getSkuId(), seckillSku.getSeckillPrice()));
+        }
+        if (Integer.valueOf(SeckillRequest.STATUS_INIT).equals(status)
+                || Integer.valueOf(SeckillRequest.STATUS_PRE_DEDUCTED).equals(status)) {
+            throw new BusinessException(409, "seckill request is processing");
+        }
+        if (Integer.valueOf(SeckillRequest.STATUS_FAILED).equals(status)
+                || Integer.valueOf(SeckillRequest.STATUS_COMPENSATED).equals(status)) {
+            throw new BusinessException(409, duplicatedFailureMessage(requestLog));
+        }
+        throw new BusinessException(409, "seckill request duplicated");
+    }
+
+    private String duplicatedFailureMessage(SeckillRequest requestLog) {
+        if (requestLog.getFailReason() == null || requestLog.getFailReason().isBlank()) {
+            return "seckill request failed";
+        }
+        return requestLog.getFailReason();
+    }
+
+    private String preDeductFailureMessage(long result) {
+        if (result == SeckillRedisService.PURCHASE_LIMIT_EXCEEDED) {
+            return "seckill purchase limit exceeded";
+        }
+        if (result == SeckillRedisService.STOCK_SOLD_OUT) {
+            return "seckill stock sold out";
+        }
+        if (result == SeckillRedisService.STOCK_NOT_PREHEATED) {
+            return "seckill stock not preheated";
+        }
+        return "seckill stock deduct failed";
     }
 
     private void deductSeckillStock(Long seckillSkuId, Integer quantity) {

@@ -9,8 +9,10 @@ import com.tuzki.mall.order.entity.OrderItem;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.seckill.entity.SeckillActivity;
+import com.tuzki.mall.seckill.entity.SeckillRequest;
 import com.tuzki.mall.seckill.entity.SeckillSku;
 import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
+import com.tuzki.mall.seckill.mapper.SeckillRequestMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
 import com.tuzki.mall.seckill.scheduling.SeckillPreheatTask;
@@ -23,7 +25,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.transaction.BeforeTransaction;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -59,6 +65,9 @@ class SeckillApiIntegrationTest {
     private SeckillSkuMapper seckillSkuMapper;
 
     @Autowired
+    private SeckillRequestMapper seckillRequestMapper;
+
+    @Autowired
     private InventoryMapper inventoryMapper;
 
     @Autowired
@@ -78,6 +87,15 @@ class SeckillApiIntegrationTest {
 
     @Autowired
     private SeckillPreheatTask seckillPreheatTask;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @BeforeTransaction
+    void cleanCommittedSeckillRequests() {
+        ensureSeckillTables();
+        jdbcTemplate.update("DELETE FROM sms_seckill_request");
+    }
 
     @BeforeEach
     void setUp() {
@@ -137,6 +155,11 @@ class SeckillApiIntegrationTest {
         assertEquals(1, inventory.getLockedStock());
         assertEquals("1", readRedisStock(seckillSku.getId()));
         assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+
+        SeckillRequest seckillRequest = getSeckillRequest(seckillSku.getId(), requestId);
+        assertEquals(30, seckillRequest.getStatus());
+        assertEquals(order.getId(), seckillRequest.getOrderId());
+        assertEquals(null, seckillRequest.getFailReason());
     }
 
     @Test
@@ -226,24 +249,61 @@ class SeckillApiIntegrationTest {
                 .eq(Order::getRequestId, seckillRequestId(seckillSku.getId(), requestId))));
         assertEquals("1", readRedisStock(seckillSku.getId()));
         assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+
+    }
+
+    @Test
+    void createSeckillOrderRejectsRepeatedProcessingRequest() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
+        String requestId = newRequestId("processing");
+        insertSeckillRequest(seckillSku, requestId, SeckillRequest.STATUS_INIT, null);
+
+        mockMvc.perform(post("/api/seckill/orders")
+                        .header("Authorization", bearerToken())
+                        .contentType("application/json")
+                        .content(seckillOrderRequest(seckillSku.getId(), requestId, 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("seckill request is processing"));
+    }
+
+    @Test
+    void createSeckillOrderRejectsRepeatedFailedRequestWithOriginalReason() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
+        String requestId = newRequestId("failed");
+        insertSeckillRequest(seckillSku, requestId, SeckillRequest.STATUS_FAILED, "manual seckill failure");
+
+        mockMvc.perform(post("/api/seckill/orders")
+                        .header("Authorization", bearerToken())
+                        .contentType("application/json")
+                        .content(seckillOrderRequest(seckillSku.getId(), requestId, 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("manual seckill failure"));
     }
 
     @Test
     void createSeckillOrderCompensatesRedisWhenRealInventoryIsInsufficient() throws Exception {
         resetInventory(0, 0);
         SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 1, 2);
+        String failedRequestId = newRequestId("compensate-fail");
         preheat(seckillSku.getActivityId());
 
         mockMvc.perform(post("/api/seckill/orders")
                         .header("Authorization", bearerToken())
                         .contentType("application/json")
-                        .content(seckillOrderRequest(seckillSku.getId(), newRequestId("compensate-fail"), 1)))
+                        .content(seckillOrderRequest(seckillSku.getId(), failedRequestId, 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("insufficient stock"));
 
         assertEquals("1", readRedisStock(seckillSku.getId()));
         assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+        SeckillRequest failedRequest = getSeckillRequest(seckillSku.getId(), failedRequestId);
+        assertEquals(50, failedRequest.getStatus());
+        assertEquals("insufficient stock", failedRequest.getFailReason());
 
         resetInventory(1, 0);
         mockMvc.perform(post("/api/seckill/orders")
@@ -368,6 +428,33 @@ class SeckillApiIntegrationTest {
                   COLLATE = utf8mb4_0900_ai_ci
                   COMMENT = '秒杀活动商品表'
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS sms_seckill_request
+                (
+                    id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT COMMENT '秒杀请求流水ID',
+                    request_id      VARCHAR(64)      NOT NULL COMMENT '秒杀请求幂等号',
+                    user_id         BIGINT UNSIGNED  NOT NULL COMMENT '用户ID',
+                    activity_id     BIGINT UNSIGNED  NOT NULL COMMENT '秒杀活动ID',
+                    seckill_sku_id  BIGINT UNSIGNED  NOT NULL COMMENT '秒杀活动商品ID',
+                    sku_id          BIGINT UNSIGNED  NOT NULL COMMENT 'SKU ID',
+                    quantity        INT UNSIGNED     NOT NULL COMMENT '购买数量',
+                    status          TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT '状态：10初始化，20预扣成功，30订单创建成功，40失败，50已补偿',
+                    order_id        BIGINT UNSIGNED  NULL COMMENT '订单ID',
+                    fail_reason     VARCHAR(255)     NULL COMMENT '失败原因',
+                    retry_count     INT UNSIGNED     NOT NULL DEFAULT 0 COMMENT '补偿重试次数',
+                    request_ip      VARCHAR(64)      NULL COMMENT '请求IP',
+                    create_time     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                    update_time     DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                    deleted         TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0未删除，1已删除',
+                    PRIMARY KEY (id),
+                    UNIQUE KEY uk_user_sku_request (user_id, seckill_sku_id, request_id),
+                    KEY idx_status_update_time (status, update_time),
+                    KEY idx_order_id (order_id)
+                ) ENGINE = InnoDB
+                  DEFAULT CHARSET = utf8mb4
+                  COLLATE = utf8mb4_0900_ai_ci
+                  COMMENT = '秒杀请求流水表'
+                """);
     }
 
     private SeckillSku createActiveSeckillSku(BigDecimal price, int stockCount, int limitQuantity) {
@@ -453,6 +540,37 @@ class SeckillApiIntegrationTest {
                 .eq(OrderItem::getOrderId, orderId));
         assertNotNull(orderItem);
         return orderItem;
+    }
+
+    private SeckillRequest getSeckillRequest(Long seckillSkuId, String requestId) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        SeckillRequest seckillRequest = transactionTemplate.execute(status -> seckillRequestMapper.selectOne(
+                new LambdaQueryWrapper<SeckillRequest>()
+                        .eq(SeckillRequest::getUserId, TestSeedData.USER_ID)
+                        .eq(SeckillRequest::getSeckillSkuId, seckillSkuId)
+                        .eq(SeckillRequest::getRequestId, requestId)));
+        assertNotNull(seckillRequest);
+        return seckillRequest;
+    }
+
+    private void insertSeckillRequest(SeckillSku seckillSku, String requestId, int requestStatus, String failReason) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        transactionTemplate.executeWithoutResult(status -> {
+            SeckillRequest seckillRequest = new SeckillRequest();
+            seckillRequest.setRequestId(requestId);
+            seckillRequest.setUserId(TestSeedData.USER_ID);
+            seckillRequest.setActivityId(seckillSku.getActivityId());
+            seckillRequest.setSeckillSkuId(seckillSku.getId());
+            seckillRequest.setSkuId(seckillSku.getSkuId());
+            seckillRequest.setQuantity(1);
+            seckillRequest.setStatus(requestStatus);
+            seckillRequest.setFailReason(failReason);
+            seckillRequest.setRetryCount(0);
+            seckillRequest.setDeleted(0);
+            seckillRequestMapper.insert(seckillRequest);
+        });
     }
 
     private Inventory getInventory() {

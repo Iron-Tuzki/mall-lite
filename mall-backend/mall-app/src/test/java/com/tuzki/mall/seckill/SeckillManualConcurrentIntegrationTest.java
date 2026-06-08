@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 秒杀手工并发验证测试，依赖外部脚本准备活动、活动商品和 Redis 预热数据。
  */
-// @Disabled("手工并发验证类：先用脚本插入秒杀数据并手动预热 Redis，再临时启用执行。")
+@Disabled("手工并发验证类：先用脚本插入秒杀数据并手动预热 Redis，再临时启用执行。")
 @SpringBootTest(properties = {
         "spring.rabbitmq.listener.simple.auto-startup=false",
         "spring.data.redis.database=0",

@@ -1,5 +1,6 @@
 USE mall_lite;
 
+DROP TABLE IF EXISTS sms_seckill_request;
 DROP TABLE IF EXISTS sms_seckill_sku;
 DROP TABLE IF EXISTS sms_seckill_activity;
 
@@ -43,7 +44,39 @@ CREATE TABLE sms_seckill_sku
   COLLATE = utf8mb4_0900_ai_ci
   COMMENT = '秒杀活动商品表';
 
-# 维护秒杀活动表
+CREATE TABLE sms_seckill_request
+(
+    id             BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT COMMENT '秒杀请求流水ID',
+    request_id     VARCHAR(64)      NOT NULL COMMENT '秒杀请求幂等号',
+    user_id        BIGINT UNSIGNED  NOT NULL COMMENT '用户ID',
+    activity_id    BIGINT UNSIGNED  NOT NULL COMMENT '秒杀活动ID',
+    seckill_sku_id BIGINT UNSIGNED  NOT NULL COMMENT '秒杀活动商品ID',
+    sku_id         BIGINT UNSIGNED  NOT NULL COMMENT 'SKU ID',
+    quantity       INT UNSIGNED     NOT NULL COMMENT '购买数量',
+    status         TINYINT UNSIGNED NOT NULL DEFAULT 10 COMMENT '状态：10初始化，20预扣成功，30订单创建成功，40失败，50已补偿',
+    order_id       BIGINT UNSIGNED  NULL COMMENT '订单ID',
+    fail_reason    VARCHAR(255)     NULL COMMENT '失败原因',
+    retry_count    INT UNSIGNED     NOT NULL DEFAULT 0 COMMENT '补偿重试次数',
+    request_ip     VARCHAR(64)      NULL COMMENT '请求IP',
+    create_time    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    update_time    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    deleted        TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '逻辑删除标记：0未删除，1已删除',
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_sku_request (user_id, seckill_sku_id, request_id),
+    KEY idx_status_update_time (status, update_time),
+    KEY idx_order_id (order_id)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci
+  COMMENT = '秒杀请求流水表';
+
+-- 维护秒杀活动测试数据
+DELETE FROM sms_seckill_request
+WHERE activity_id IN (
+    SELECT id
+    FROM sms_seckill_activity
+    WHERE name IN ('今日限时秒杀', '明日预热秒杀')
+);
 DELETE FROM sms_seckill_sku
 WHERE activity_id IN (
     SELECT id
@@ -54,7 +87,8 @@ DELETE FROM sms_seckill_activity
 WHERE name IN ('今日限时秒杀', '明日预热秒杀');
 
 INSERT INTO sms_seckill_activity (name, start_time, end_time, status, remark)
-VALUES ('今日限时秒杀', DATE_SUB(NOW(), INTERVAL 10 MINUTE), DATE_ADD(NOW(), INTERVAL 2 HOUR), 1, '用于前台秒杀页联调的进行中活动');
+VALUES ('今日限时秒杀', DATE_SUB(NOW(), INTERVAL 10 MINUTE), DATE_ADD(NOW(), INTERVAL 2 HOUR), 1,
+        '用于前台秒杀页面联调的进行中活动');
 SET @current_seckill_activity_id = LAST_INSERT_ID();
 
 INSERT INTO sms_seckill_sku (activity_id, sku_id, seckill_price, stock_count, limit_quantity, sort, status)
@@ -72,7 +106,8 @@ ORDER BY s.id
 LIMIT 3;
 
 INSERT INTO sms_seckill_activity (name, start_time, end_time, status, remark)
-VALUES ('明日预热秒杀', DATE_ADD(NOW(), INTERVAL 1 day ), DATE_ADD(NOW(), INTERVAL 2 day ), 1, '用于验证定时预热窗口的即将开始活动');
+VALUES ('明日预热秒杀', DATE_ADD(NOW(), INTERVAL 1 DAY), DATE_ADD(NOW(), INTERVAL 2 DAY), 1,
+        '用于验证定时预热窗口的即将开始活动');
 SET @upcoming_seckill_activity_id = LAST_INSERT_ID();
 
 INSERT INTO sms_seckill_sku (activity_id, sku_id, seckill_price, stock_count, limit_quantity, sort, status)

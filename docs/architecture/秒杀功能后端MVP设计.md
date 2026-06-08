@@ -305,7 +305,8 @@ mall:seckill:user:{seckillSkuId}:{userId} - quantity，扣到 0 时删除
 | 超过限购数量 | 400 | seckill purchase limit exceeded |
 | 秒杀库存未预热 | 400 | seckill stock not preheated |
 | 秒杀库存不足 | 400 | seckill stock sold out |
-| 重复请求处理中 | 409 | seckill request duplicated |
+| 重复请求处理中 | 409 | seckill request is processing |
+| 重复失败请求 | 409 | 流水记录中的失败原因 |
 
 ## 十、测试设计
 
@@ -402,3 +403,45 @@ UPDATE sms_seckill_sku
 同一用户、同一活动商品、同一 `requestId` 重复请求时，Redis Lua 返回重复请求，不再重复扣减 Redis 活动库存，也不会重复扣减 `sms_seckill_sku.stock_count`，后续由订单模块幂等返回原订单。
 
 如果 Redis 预扣成功后，订单创建、真实库存锁定或活动库存持久扣减任一环节失败，当前事务回滚订单侧变更，并同步补偿 Redis 活动库存、用户限购占用和请求幂等标记。
+## 十四、秒杀请求流水表
+
+新增 `sms_seckill_request` 作为秒杀请求的持久化流水和幂等兜底表。它记录同一用户、同一活动商品、同一 `requestId` 的处理状态，后续补偿任务、MQ 异步下单和问题排查都以该表为抓手。
+
+### 1. 幂等边界
+
+流水表增加唯一键：
+
+```sql
+UNIQUE KEY uk_user_sku_request (user_id, seckill_sku_id, request_id)
+```
+
+第一版采用“双层幂等”：
+
+1. `sms_seckill_request` 负责持久化幂等，解决 Redis key 过期、服务重启、补偿排查等问题。
+2. Redis Lua 中的 `mall:seckill:request:{seckillSkuId}:{userId}:{requestId}` 继续保留，负责高并发瞬间的原子防重和快速拒绝。
+
+因此当前不删除 Lua 脚本里的幂等判断。后续如果切到完整 MQ 异步状态机，再评估是否弱化 Redis 请求幂等 key。
+
+### 2. 状态流转
+
+```text
+10 INIT           请求已接收
+20 PRE_DEDUCTED  Redis 预扣成功
+30 ORDER_CREATED 订单创建成功
+40 FAILED         失败
+50 COMPENSATED    Redis 预扣已补偿
+```
+
+为了保留失败和补偿记录，流水写入和状态推进使用独立事务。主下单事务失败回滚时，流水仍会保留最终失败或已补偿状态。
+
+### 3. 重复请求处理
+
+当 `INSERT IGNORE` 返回 0 时，说明同一用户、同一活动商品、同一 `requestId` 的流水已经存在。此时使用 `SELECT ... FOR UPDATE` 当前读查询已有流水，确保重复请求基于最新已提交状态做决策。
+
+重复请求按状态处理：
+
+1. `ORDER_CREATED` 且存在 `order_id`：走订单幂等查询，返回原订单。
+2. `INIT` 或 `PRE_DEDUCTED`：说明原请求仍在处理，返回 `seckill request is processing`。
+3. `FAILED` 或 `COMPENSATED`：返回流水记录中的失败原因。
+
+`FOR UPDATE` 只能保证读取最新已提交流水并在并发更新时等待行锁释放，不代表一定等待原秒杀请求完整下单结束。因此处理中状态仍然需要显式返回或由上层后续扩展短轮询。
