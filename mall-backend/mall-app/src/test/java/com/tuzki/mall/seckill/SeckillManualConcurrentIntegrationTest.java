@@ -79,7 +79,7 @@ class SeckillManualConcurrentIntegrationTest {
                 int requestIndex = i;
                 futures.add(executorService.submit(() -> {
                     readyLatch.countDown();
-                    assertTrue(startLatch.await(5, TimeUnit.SECONDS));
+                    assertTrue(startLatch.await(5, TimeUnit.SECONDS)); // 所有请求线程阻塞在这里
                     String token = loginSessionService.createSession(userIds[requestIndex]);
                     String requestId = "mc-" + requestIndex + "-" + UUID.randomUUID().toString().substring(0, 8);
                     return mockMvc.perform(post("/api/seckill/orders")
@@ -91,8 +91,8 @@ class SeckillManualConcurrentIntegrationTest {
                 }));
             }
 
-            assertTrue(readyLatch.await(5, TimeUnit.SECONDS));
-            startLatch.countDown();
+            assertTrue(readyLatch.await(5, TimeUnit.SECONDS));// 主线程等待所有子线程准备好。CountDownLatch 的特点是：计数一旦归零，就永久打开。
+            startLatch.countDown(); // 主线程通知所有请求线程开始执行
 
             int successCount = 0;
             int failCount = 0;

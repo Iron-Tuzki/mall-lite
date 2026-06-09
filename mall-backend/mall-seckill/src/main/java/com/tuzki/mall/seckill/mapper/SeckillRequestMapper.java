@@ -7,6 +7,9 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 /**
  * 秒杀请求流水 Mapper，负责秒杀请求流水的创建、幂等查询以及状态推进。
  */
@@ -49,6 +52,29 @@ public interface SeckillRequestMapper extends BaseMapper<SeckillRequest> {
     SeckillRequest selectByUniqueKeyForUpdate(@Param("userId") Long userId,
                                               @Param("seckillSkuId") Long seckillSkuId,
                                               @Param("requestId") String requestId);
+
+    /**
+     * 查询超时未完成的 Redis 预扣成功流水，用于后台补偿任务批量处理。
+     *
+     * @param timeoutBefore 超时边界时间，更新时间早于等于该时间才会被扫描
+     * @param batchSize 单批扫描数量
+     * @param maxRetryCount 最大补偿重试次数，达到该次数的流水不再扫描
+     * @return 待补偿的秒杀请求流水列表
+     */
+    @Select("""
+            SELECT id, request_id, user_id, activity_id, seckill_sku_id, sku_id, quantity, status, order_id,
+                   fail_reason, retry_count, request_ip, create_time, update_time, deleted
+              FROM sms_seckill_request
+             WHERE status = 20
+               AND update_time <= #{timeoutBefore}
+               AND retry_count < #{maxRetryCount}
+               AND deleted = 0
+             ORDER BY update_time ASC, id ASC
+             LIMIT #{batchSize}
+            """)
+    List<SeckillRequest> listTimedOutPreDeducted(@Param("timeoutBefore") LocalDateTime timeoutBefore,
+                                                 @Param("batchSize") Integer batchSize,
+                                                 @Param("maxRetryCount") Integer maxRetryCount);
 
     /**
      * 将请求流水推进到 Redis 预扣成功状态。
@@ -116,4 +142,39 @@ public interface SeckillRequestMapper extends BaseMapper<SeckillRequest> {
                AND deleted = 0
             """)
     int markCompensated(@Param("id") Long id, @Param("failReason") String failReason);
+
+    /**
+     * 将仍处于 Redis 预扣成功状态的请求流水标记为已补偿，避免并发重复推进状态。
+     *
+     * @param id 秒杀请求流水 ID
+     * @param failReason 补偿说明
+     * @return 受影响行数
+     */
+    @Update("""
+            UPDATE sms_seckill_request
+               SET status = 50,
+                   fail_reason = #{failReason},
+                   update_time = NOW()
+             WHERE id = #{id}
+               AND status = 20
+               AND deleted = 0
+            """)
+    int markCompensatedIfPreDeducted(@Param("id") Long id, @Param("failReason") String failReason);
+
+    /**
+     * 记录后台补偿失败并增加重试次数，下一轮任务会继续处理未超过重试上限的流水。
+     *
+     * @param id 秒杀请求流水 ID
+     * @param failReason 本次补偿失败原因
+     * @return 受影响行数
+     */
+    @Update("""
+            UPDATE sms_seckill_request
+               SET retry_count = retry_count + 1,
+                   fail_reason = #{failReason}
+             WHERE id = #{id}
+               AND status = 20
+               AND deleted = 0
+            """)
+    int increaseCompensationRetry(@Param("id") Long id, @Param("failReason") String failReason);
 }

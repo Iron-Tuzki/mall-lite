@@ -49,6 +49,7 @@ public class SeckillRedisService {
             """;
 
     private static final String COMPENSATE_SCRIPT = """
+            if redis.call('EXISTS', KEYS[3]) == 0 then return 0 end
             redis.call('INCRBY', KEYS[1], ARGV[1])
             local current = redis.call('DECRBY', KEYS[2], ARGV[1])
             if current <= 0 then

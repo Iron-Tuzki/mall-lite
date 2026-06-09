@@ -15,6 +15,7 @@ import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
 import com.tuzki.mall.seckill.mapper.SeckillRequestMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
+import com.tuzki.mall.seckill.service.SeckillCompensationService;
 import com.tuzki.mall.seckill.scheduling.SeckillPreheatTask;
 import com.tuzki.mall.user.service.LoginSessionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +88,9 @@ class SeckillApiIntegrationTest {
 
     @Autowired
     private SeckillPreheatTask seckillPreheatTask;
+
+    @Autowired
+    private SeckillCompensationService seckillCompensationService;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -312,6 +316,65 @@ class SeckillApiIntegrationTest {
                         .content(seckillOrderRequest(seckillSku.getId(), newRequestId("compensate-success"), 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void compensateTimedOutPreDeductedRequestsRestoresRedisAndMarksCompensated() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
+        String requestId = newRequestId("timeout-compensate");
+        preheat(seckillSku.getActivityId());
+        insertSeckillRequest(
+                seckillSku,
+                requestId,
+                SeckillRequest.STATUS_PRE_DEDUCTED,
+                null,
+                LocalDateTime.now().minusMinutes(10));
+        redissonClient.getBucket(seckillRedisService.stockKey(seckillSku.getId()), StringCodec.INSTANCE).set("1");
+        redissonClient.getBucket(seckillRedisService.userKey(seckillSku.getId(), TestSeedData.USER_ID), StringCodec.INSTANCE).set("1");
+        redissonClient.getBucket(seckillRedisService.requestKey(seckillSku.getId(), TestSeedData.USER_ID, requestId), StringCodec.INSTANCE).set("1");
+
+        int compensatedCount = compensateTimedOutPreDeductedRequests(
+                LocalDateTime.now().minusMinutes(1),
+                10,
+                3);
+
+        assertEquals(1, compensatedCount);
+        assertEquals("2", readRedisStock(seckillSku.getId()));
+        assertEquals(null, redissonClient.getBucket(seckillRedisService.userKey(seckillSku.getId(), TestSeedData.USER_ID), StringCodec.INSTANCE).get());
+        assertEquals(null, redissonClient.getBucket(seckillRedisService.requestKey(seckillSku.getId(), TestSeedData.USER_ID, requestId), StringCodec.INSTANCE).get());
+        SeckillRequest compensatedRequest = getSeckillRequest(seckillSku.getId(), requestId);
+        assertEquals(SeckillRequest.STATUS_COMPENSATED, compensatedRequest.getStatus());
+        assertEquals("seckill request compensation succeeded", compensatedRequest.getFailReason());
+    }
+
+    @Test
+    void compensateTimedOutPreDeductedRequestsSkipsFreshRequestsAndMaxRetries() {
+        SeckillSku freshSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
+        String freshRequestId = newRequestId("fresh-pre-deducted");
+        insertSeckillRequest(
+                freshSku,
+                freshRequestId,
+                SeckillRequest.STATUS_PRE_DEDUCTED,
+                null,
+                LocalDateTime.now());
+        SeckillSku retriedSku = createActiveSeckillSku(new BigDecimal("29.90"), 2, 1);
+        String retriedRequestId = newRequestId("max-retry");
+        insertSeckillRequest(
+                retriedSku,
+                retriedRequestId,
+                SeckillRequest.STATUS_PRE_DEDUCTED,
+                null,
+                LocalDateTime.now().minusMinutes(10),
+                3);
+
+        int compensatedCount = compensateTimedOutPreDeductedRequests(
+                LocalDateTime.now().minusMinutes(1),
+                10,
+                3);
+
+        assertEquals(0, compensatedCount);
+        assertEquals(SeckillRequest.STATUS_PRE_DEDUCTED, getSeckillRequest(freshSku.getId(), freshRequestId).getStatus());
+        assertEquals(SeckillRequest.STATUS_PRE_DEDUCTED, getSeckillRequest(retriedSku.getId(), retriedRequestId).getStatus());
     }
 
     @Test
@@ -554,7 +617,33 @@ class SeckillApiIntegrationTest {
         return seckillRequest;
     }
 
+    private int compensateTimedOutPreDeductedRequests(LocalDateTime timeoutBefore, int batchSize, int maxRetryCount) {
+        TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        Integer compensatedCount = transactionTemplate.execute(status ->
+                seckillCompensationService.compensateTimedOutPreDeductedRequests(timeoutBefore, batchSize, maxRetryCount));
+        assertNotNull(compensatedCount);
+        return compensatedCount;
+    }
+
     private void insertSeckillRequest(SeckillSku seckillSku, String requestId, int requestStatus, String failReason) {
+        insertSeckillRequest(seckillSku, requestId, requestStatus, failReason, null);
+    }
+
+    private void insertSeckillRequest(SeckillSku seckillSku,
+                                      String requestId,
+                                      int requestStatus,
+                                      String failReason,
+                                      LocalDateTime updateTime) {
+        insertSeckillRequest(seckillSku, requestId, requestStatus, failReason, updateTime, 0);
+    }
+
+    private void insertSeckillRequest(SeckillSku seckillSku,
+                                      String requestId,
+                                      int requestStatus,
+                                      String failReason,
+                                      LocalDateTime updateTime,
+                                      int retryCount) {
         TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
         transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         transactionTemplate.executeWithoutResult(status -> {
@@ -567,7 +656,8 @@ class SeckillApiIntegrationTest {
             seckillRequest.setQuantity(1);
             seckillRequest.setStatus(requestStatus);
             seckillRequest.setFailReason(failReason);
-            seckillRequest.setRetryCount(0);
+            seckillRequest.setRetryCount(retryCount);
+            seckillRequest.setUpdateTime(updateTime);
             seckillRequest.setDeleted(0);
             seckillRequestMapper.insert(seckillRequest);
         });

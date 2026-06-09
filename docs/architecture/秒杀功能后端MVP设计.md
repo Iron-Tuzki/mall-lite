@@ -445,3 +445,32 @@ UNIQUE KEY uk_user_sku_request (user_id, seckill_sku_id, request_id)
 3. `FAILED` 或 `COMPENSATED`：返回流水记录中的失败原因。
 
 `FOR UPDATE` 只能保证读取最新已提交流水并在并发更新时等待行锁释放，不代表一定等待原秒杀请求完整下单结束。因此处理中状态仍然需要显式返回或由上层后续扩展短轮询。
+
+### 4. 后台补偿任务
+
+第一版后台补偿任务只处理长时间停留在 `PRE_DEDUCTED` 状态的流水。该状态表示 Redis 已经预扣成功，但请求没有继续推进到订单创建成功、失败或已补偿，可能是服务进程中断或主链路异常导致。
+
+任务配置：
+
+```yaml
+mall:
+  seckill:
+    compensation:
+      enabled: true
+      fixed-delay-ms: 60000
+      timeout-seconds: 120
+      batch-size: 100
+      max-retry-count: 3
+```
+
+执行流程：
+
+1. `SeckillCompensationTask` 使用分布式锁 `mall:seckill:compensation` 防止多实例重复扫描。
+2. `SeckillCompensationService` 扫描 `status = PRE_DEDUCTED`、`update_time <= now - timeoutSeconds`、`retry_count < maxRetryCount` 的流水。
+3. 对每条流水调用 Redis 补偿脚本，回补活动库存、扣减用户限购占用并删除请求幂等 key。
+4. 补偿成功后使用 CAS 条件 `status = PRE_DEDUCTED` 将流水推进到 `COMPENSATED`。
+5. 补偿失败时只增加 `retry_count` 并记录失败原因，下一轮任务继续处理。
+
+Redis 补偿脚本增加请求幂等 key 判断：只有 `mall:seckill:request:{seckillSkuId}:{userId}:{requestId}` 存在时才执行回补。这样即使任务在 Redis 已补偿但数据库还未标记完成时中断，下一轮重复执行也不会把库存重复加回去。
+
+当前任务不处理 `INIT` 状态，因为 `INIT` 不能证明 Redis 已经预扣成功。后续如果需要清理长期初始化状态，可以单独增加“初始化超时失败标记”任务。

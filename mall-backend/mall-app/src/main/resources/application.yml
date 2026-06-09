@@ -116,6 +116,12 @@ mall:
       enabled: true
       fixed-delay-ms: 60000
       window-minutes: 10
+    compensation:
+      enabled: true
+      fixed-delay-ms: 60000
+      timeout-seconds: 120
+      batch-size: 100
+      max-retry-count: 3
   coupon:
     rabbit:
       coupon-reward-exchange: mall.coupon-reward.exchange
