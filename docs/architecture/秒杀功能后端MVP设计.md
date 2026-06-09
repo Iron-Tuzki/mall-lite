@@ -474,3 +474,45 @@ mall:
 Redis 补偿脚本增加请求幂等 key 判断：只有 `mall:seckill:request:{seckillSkuId}:{userId}:{requestId}` 存在时才执行回补。这样即使任务在 Redis 已补偿但数据库还未标记完成时中断，下一轮重复执行也不会把库存重复加回去。
 
 当前任务不处理 `INIT` 状态，因为 `INIT` 不能证明 Redis 已经预扣成功。后续如果需要清理长期初始化状态，可以单独增加“初始化超时失败标记”任务。
+
+## 十五、秒杀接口限流
+
+第一版秒杀下单接口限流复用项目已有 Sentinel 能力，先做接口级 QPS 保护，避免高并发请求直接打满登录校验、活动查询、流水表写入和订单链路。
+
+### 1. Sentinel 资源
+
+秒杀下单资源名：
+
+```text
+seckill-create-order
+```
+
+`SeckillServiceImpl#createSeckillOrder` 使用 `@SentinelResource` 标记该资源。触发 Sentinel 流控时，block handler 返回：
+
+```text
+code = 429
+message = seckill request too frequent
+```
+
+业务异常继续按原有 `BusinessException` 返回，不走 Sentinel fallback。
+
+### 2. 默认配置
+
+```yaml
+mall:
+  sentinel:
+    seckill-create-order:
+      enabled: true
+      flow-qps: 50
+```
+
+启动时 `SentinelProperties` 会把热门商品详情和秒杀下单的 FlowRule 一次性加载到 Sentinel，避免多个资源规则互相覆盖。
+
+### 3. 与 Redis 能力的边界
+
+Redis Lua 里的用户 key 和请求 key 仍然用于限购和幂等：
+
+1. `mall:seckill:user:{seckillSkuId}:{userId}`：限制用户对单个活动商品的购买数量。
+2. `mall:seckill:request:{seckillSkuId}:{userId}:{requestId}`：防止同一请求重复扣减。
+
+Sentinel 限流保护的是接口整体 QPS，Redis 限购/幂等保护的是业务一致性。后续如果需要用户级或 IP 级防刷，再补 Redis 维度限流或网关限流。

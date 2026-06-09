@@ -1,6 +1,9 @@
 package com.tuzki.mall.seckill;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.alibaba.csp.sentinel.slots.block.RuleConstant;
+import com.alibaba.csp.sentinel.slots.block.flow.FlowRule;
+import com.alibaba.csp.sentinel.slots.block.flow.FlowRuleManager;
 import com.tuzki.mall.TestSeedData;
 import com.tuzki.mall.inventory.entity.Inventory;
 import com.tuzki.mall.inventory.mapper.InventoryMapper;
@@ -16,6 +19,7 @@ import com.tuzki.mall.seckill.mapper.SeckillRequestMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
 import com.tuzki.mall.seckill.service.SeckillCompensationService;
+import com.tuzki.mall.seckill.sentinel.SeckillSentinelResources;
 import com.tuzki.mall.seckill.scheduling.SeckillPreheatTask;
 import com.tuzki.mall.user.service.LoginSessionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -103,6 +108,7 @@ class SeckillApiIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        FlowRuleManager.loadRules(List.of());
         ensureSeckillTables();
         jdbcTemplate.update("DELETE FROM sms_seckill_sku");
         jdbcTemplate.update("DELETE FROM sms_seckill_activity");
@@ -222,6 +228,25 @@ class SeckillApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("seckill purchase limit exceeded"));
+    }
+
+    @Test
+    void createSeckillOrderReturnsTooFrequentWhenSentinelFlowControlTriggered() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
+        preheat(seckillSku.getActivityId());
+        FlowRule flowRule = new FlowRule(SeckillSentinelResources.SECKILL_CREATE_ORDER);
+        flowRule.setGrade(RuleConstant.FLOW_GRADE_QPS);
+        flowRule.setCount(0);
+        FlowRuleManager.loadRules(List.of(flowRule));
+
+        mockMvc.perform(post("/api/seckill/orders")
+                        .header("Authorization", bearerToken())
+                        .contentType("application/json")
+                        .content(seckillOrderRequest(seckillSku.getId(), newRequestId("sentinel"), 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(429))
+                .andExpect(jsonPath("$.message").value("seckill request too frequent"));
     }
 
     @Test

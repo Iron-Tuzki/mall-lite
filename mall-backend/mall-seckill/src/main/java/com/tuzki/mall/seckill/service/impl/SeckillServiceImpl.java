@@ -1,6 +1,8 @@
 package com.tuzki.mall.seckill.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.alibaba.csp.sentinel.annotation.SentinelResource;
+import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.order.dto.OrderCreateItemRequest;
 import com.tuzki.mall.order.dto.OrderCreateRequest;
@@ -17,6 +19,7 @@ import com.tuzki.mall.seckill.entity.SeckillSku;
 import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
+import com.tuzki.mall.seckill.sentinel.SeckillSentinelResources;
 import com.tuzki.mall.seckill.service.SeckillRequestLogService;
 import com.tuzki.mall.seckill.service.SeckillService;
 import com.tuzki.mall.seckill.vo.SeckillActivityVO;
@@ -118,6 +121,10 @@ public class SeckillServiceImpl implements SeckillService {
     }
 
     @Override
+    @SentinelResource(
+            value = SeckillSentinelResources.SECKILL_CREATE_ORDER,
+            blockHandler = "handleCreateSeckillOrderBlocked",  //当前不定义 fallback 是因为：Sentinel 只负责入口流量保护，业务异常仍由秒杀业务链路自己处理。
+            exceptionsToIgnore = BusinessException.class)
     @Transactional(rollbackFor = Exception.class)
     public OrderCreateVO createSeckillOrder(Long userId, SeckillOrderCreateRequest request) {
         SeckillSku seckillSku = getActiveSeckillSku(request.getSeckillSkuId());
@@ -179,6 +186,14 @@ public class SeckillServiceImpl implements SeckillService {
             }
             throw exception;
         }
+    }
+
+    public OrderCreateVO handleCreateSeckillOrderBlocked(Long userId,
+                                                         SeckillOrderCreateRequest request,
+                                                         BlockException exception) {
+        LOGGER.info("秒杀下单触发 Sentinel 限流，用户id=[{}]，请求={}", userId,
+                request == null ? null : request.getSeckillSkuId());
+        throw new BusinessException(429, "seckill request too frequent");
     }
 
     private SeckillActivityVO toActivityVO(SeckillActivity activity) {
