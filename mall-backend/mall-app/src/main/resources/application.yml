@@ -125,6 +125,11 @@ mall:
       timeout-seconds: 120
       batch-size: 100
       max-retry-count: 3
+    rate-limit:
+      enabled: true
+      window-seconds: 5
+      user-limit: 3
+      ip-limit: 10
   coupon:
     rabbit:
       coupon-reward-exchange: mall.coupon-reward.exchange

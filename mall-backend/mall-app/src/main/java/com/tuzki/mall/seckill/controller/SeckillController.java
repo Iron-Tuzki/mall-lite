@@ -4,9 +4,11 @@ import com.tuzki.mall.common.api.Result;
 import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.seckill.dto.SeckillOrderCreateRequest;
+import com.tuzki.mall.seckill.ratelimit.SeckillRateLimitService;
 import com.tuzki.mall.seckill.service.SeckillService;
 import com.tuzki.mall.seckill.vo.SeckillActivityVO;
 import com.tuzki.mall.user.service.LoginSessionService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,9 +33,14 @@ public class SeckillController {
 
     private final LoginSessionService loginSessionService;
 
-    public SeckillController(SeckillService seckillService, LoginSessionService loginSessionService) {
+    private final SeckillRateLimitService seckillRateLimitService;
+
+    public SeckillController(SeckillService seckillService,
+                             LoginSessionService loginSessionService,
+                             SeckillRateLimitService seckillRateLimitService) {
         this.seckillService = seckillService;
         this.loginSessionService = loginSessionService;
+        this.seckillRateLimitService = seckillRateLimitService;
     }
 
     @GetMapping("/activities/active")
@@ -44,8 +51,14 @@ public class SeckillController {
     @PostMapping("/orders")
     public Result<OrderCreateVO> createSeckillOrder(
             @RequestHeader(value = "Authorization", required = false) String authorization,
+            HttpServletRequest httpRequest,
             @Valid @RequestBody SeckillOrderCreateRequest request) {
-        return Result.success(seckillService.createSeckillOrder(resolveCurrentUserId(authorization), request));
+        Long userId = resolveCurrentUserId(authorization);
+        String clientIp = resolveClientIp(httpRequest);
+        if (!seckillRateLimitService.isAllowed(userId, clientIp)) {
+            throw new BusinessException(429, "seckill request too frequent");
+        }
+        return Result.success(seckillService.createSeckillOrder(userId, request));
     }
 
     private Long resolveCurrentUserId(String authorization) {
@@ -66,5 +79,17 @@ public class SeckillController {
             throw new BusinessException(401, "missing login token");
         }
         return token;
+    }
+
+    private String resolveClientIp(HttpServletRequest request) {
+        String forwardedFor = request.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(forwardedFor)) {
+            return forwardedFor.split(",")[0].trim();
+        }
+        String realIp = request.getHeader("X-Real-IP");
+        if (StringUtils.hasText(realIp)) {
+            return realIp.trim();
+        }
+        return request.getRemoteAddr();
     }
 }

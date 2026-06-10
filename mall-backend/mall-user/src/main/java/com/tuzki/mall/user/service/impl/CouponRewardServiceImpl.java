@@ -69,6 +69,7 @@ public class CouponRewardServiceImpl implements CouponRewardService {
 
     private void issueSignInReward(Long userId, YearMonth rewardMonth, int requiredDays, Long templateId) {
         String sourceKey = buildSourceKey(requiredDays, rewardMonth);
+        // MQ消费幂等控制，先查数据库或缓存，若已存在记录则返回，防止重复投递消息被重复消费
         if (hasReceivedReward(userId, sourceKey)) {
             return;
         }

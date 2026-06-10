@@ -53,7 +53,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 秒杀接口集成测试，验证秒杀活动查询、库存预热、抢购下单和异常补偿流程。
  */
-@SpringBootTest(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
+@SpringBootTest(properties = {
+        "spring.rabbitmq.listener.simple.auto-startup=false",
+        "mall.seckill.rate-limit.enabled=true",
+        "mall.seckill.rate-limit.window-seconds=5",
+        "mall.seckill.rate-limit.user-limit=3",
+        "mall.seckill.rate-limit.ip-limit=10"
+})
 @AutoConfigureMockMvc
 @Transactional
 class SeckillApiIntegrationTest {
@@ -243,6 +249,57 @@ class SeckillApiIntegrationTest {
                         .header("Authorization", bearerToken())
                         .contentType("application/json")
                         .content(seckillOrderRequest(seckillSku.getId(), newRequestId("sentinel"), 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(429))
+                .andExpect(jsonPath("$.message").value("seckill request too frequent"));
+    }
+
+    @Test
+    void createSeckillOrderReturnsTooFrequentWhenUserRateLimitExceeded() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 10, 10);
+        preheat(seckillSku.getActivityId());
+        String token = bearerToken();
+
+        for (int i = 0; i < 3; i++) {
+            mockMvc.perform(post("/api/seckill/orders")
+                            .header("Authorization", token)
+                            .contentType("application/json")
+                            .content(seckillOrderRequest(seckillSku.getId(), newRequestId("user-rate-" + i), 1)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true));
+        }
+
+        mockMvc.perform(post("/api/seckill/orders")
+                        .header("Authorization", token)
+                        .contentType("application/json")
+                        .content(seckillOrderRequest(seckillSku.getId(), newRequestId("user-rate-blocked"), 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(429))
+                .andExpect(jsonPath("$.message").value("seckill request too frequent"));
+    }
+
+    @Test
+    void createSeckillOrderReturnsTooFrequentWhenIpRateLimitExceeded() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 10, 10);
+        preheat(seckillSku.getActivityId());
+        String clientIp = "203.0.113.10";
+
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(post("/api/seckill/orders")
+                            .header("Authorization", bearerToken(TestSeedData.USER_ID + i + 1))
+                            .header("X-Forwarded-For", clientIp)
+                            .contentType("application/json")
+                            .content(seckillOrderRequest(seckillSku.getId(), newRequestId("ip-rate-" + i), 1)))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(post("/api/seckill/orders")
+                        .header("Authorization", bearerToken(TestSeedData.USER_ID + 100))
+                        .header("X-Forwarded-For", clientIp)
+                        .contentType("application/json")
+                        .content(seckillOrderRequest(seckillSku.getId(), newRequestId("ip-rate-blocked"), 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value(429))
@@ -604,7 +661,11 @@ class SeckillApiIntegrationTest {
     }
 
     private String bearerToken() {
-        return "Bearer " + loginSessionService.createSession(TestSeedData.USER_ID);
+        return bearerToken(TestSeedData.USER_ID);
+    }
+
+    private String bearerToken(Long userId) {
+        return "Bearer " + loginSessionService.createSession(userId);
     }
 
     private String newRequestId(String prefix) {

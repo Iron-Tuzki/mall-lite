@@ -475,11 +475,66 @@ Redis 补偿脚本增加请求幂等 key 判断：只有 `mall:seckill:request:{
 
 当前任务不处理 `INIT` 状态，因为 `INIT` 不能证明 Redis 已经预扣成功。后续如果需要清理长期初始化状态，可以单独增加“初始化超时失败标记”任务。
 
-## 十五、秒杀接口限流
+## 十五、秒杀接口限流和防刷
 
-第一版秒杀下单接口限流复用项目已有 Sentinel 能力，先做接口级 QPS 保护，避免高并发请求直接打满登录校验、活动查询、流水表写入和订单链路。
+秒杀下单接口采用两层入口保护：
 
-### 1. Sentinel 资源
+1. Redis 用户/IP 滑动窗口防刷：拦截单个用户或单个客户端 IP 的高频访问。
+2. Sentinel 接口级 QPS 限流：保护服务整体吞吐，避免高并发请求直接打满活动查询、流水表写入和订单链路。
+
+请求链路顺序：
+
+```text
+登录校验
+-> Redis 用户/IP 防刷
+-> Sentinel 接口级 QPS 保护
+-> 请求流水幂等
+-> Redis Lua 库存预扣
+-> MySQL 扣库存和建单
+```
+
+### 1. Redis 用户/IP 防刷
+
+Redis 防刷使用 Lua + ZSet 滑动窗口实现。每次请求会原子执行：
+
+1. 删除窗口外的访问记录。
+2. 统计窗口内访问次数。
+3. 超过阈值直接拒绝。
+4. 未超过阈值则写入本次访问记录并刷新 TTL。
+
+Redis key：
+
+```text
+mall:seckill:rate:user:{userId}
+mall:seckill:rate:ip:{clientIp}
+```
+
+默认配置：
+
+```yaml
+mall:
+  seckill:
+    rate-limit:
+      enabled: true
+      window-seconds: 5
+      user-limit: 3
+      ip-limit: 10
+```
+
+客户端 IP 解析顺序：
+
+```text
+X-Forwarded-For 第一个 IP -> X-Real-IP -> request.getRemoteAddr()
+```
+
+命中用户或 IP 防刷时返回：
+
+```text
+code = 429
+message = seckill request too frequent
+```
+
+### 2. Sentinel 资源
 
 秒杀下单资源名：
 
@@ -496,7 +551,7 @@ message = seckill request too frequent
 
 业务异常继续按原有 `BusinessException` 返回，不走 Sentinel fallback。
 
-### 2. 默认配置
+### 3. Sentinel 默认配置
 
 ```yaml
 mall:
@@ -508,11 +563,11 @@ mall:
 
 启动时 `SentinelProperties` 会把热门商品详情和秒杀下单的 FlowRule 一次性加载到 Sentinel，避免多个资源规则互相覆盖。
 
-### 3. 与 Redis 能力的边界
+### 4. 与 Redis 业务一致性能力的边界
 
 Redis Lua 里的用户 key 和请求 key 仍然用于限购和幂等：
 
 1. `mall:seckill:user:{seckillSkuId}:{userId}`：限制用户对单个活动商品的购买数量。
 2. `mall:seckill:request:{seckillSkuId}:{userId}:{requestId}`：防止同一请求重复扣减。
 
-Sentinel 限流保护的是接口整体 QPS，Redis 限购/幂等保护的是业务一致性。后续如果需要用户级或 IP 级防刷，再补 Redis 维度限流或网关限流。
+Redis 防刷 key 只解决访问频率问题，Redis 限购/幂等 key 解决业务一致性问题，两者不能互相替代。Sentinel 限流保护的是接口整体 QPS，适合做服务级入口保护。
