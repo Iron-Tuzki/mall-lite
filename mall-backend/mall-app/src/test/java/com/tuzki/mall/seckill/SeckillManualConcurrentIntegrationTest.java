@@ -8,6 +8,7 @@ import com.tuzki.mall.seckill.entity.SeckillSku;
 import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.user.service.LoginSessionService;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,11 +21,17 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -113,6 +120,79 @@ class SeckillManualConcurrentIntegrationTest {
             executorService.shutdownNow();
             assertTrue(executorService.awaitTermination(10, TimeUnit.SECONDS));
         }
+    }
+
+    @Test
+    void concurrentSeckillRequestsWithThreadPoolExecutorAndCyclicBarrierForManualReview() throws Exception {
+        Long skuId = 900017L;
+        Long[] userIds = {999999L, 1000000L, 900313L};
+        Long[] addressIds = {900059L, 900118L, 900119L};
+        int expectedSuccessCount = 2;
+        int expectedFailCount = 1;
+
+        Long seckillSkuId = resolveActiveSeckillSkuId(skuId);
+        int concurrentRequests = userIds.length;
+        assertEquals(concurrentRequests, addressIds.length);
+
+        ThreadPoolExecutor executor = getThreadPoolExecutor(concurrentRequests);
+        CyclicBarrier startBarrier = new CyclicBarrier(concurrentRequests);
+        try {
+            List<CompletableFuture<MvcResult>> futures = new ArrayList<>();
+            for (int i = 0; i < concurrentRequests; i++) {
+                int requestIndex = i;
+                futures.add(CompletableFuture.supplyAsync(() -> {
+                    try {
+                        startBarrier.await(5, TimeUnit.SECONDS);
+                        String token = loginSessionService.createSession(userIds[requestIndex]);
+                        String requestId = "mcb-" + requestIndex + "-" + UUID.randomUUID().toString().substring(0, 8);
+                        return mockMvc.perform(post("/api/seckill/orders")
+                                        .header("Authorization", "Bearer " + token)
+                                        .contentType("application/json")
+                                        .content(seckillOrderRequest(seckillSkuId, requestId, addressIds[requestIndex], 1)))
+                                .andExpect(status().isOk())
+                                .andReturn();
+                    } catch (Exception exception) {
+                        throw new CompletionException(exception);
+                    }
+                }, executor));
+            }
+
+            int successCount = 0;
+            int failCount = 0;
+            for (CompletableFuture<MvcResult> future : futures) {
+                MvcResult result = future.get(10, TimeUnit.SECONDS);
+                String responseBody = result.getResponse().getContentAsString();
+                System.out.println(responseBody);
+                JsonNode responseJson = objectMapper.readTree(responseBody);
+                if (responseJson.path("success").asBoolean(false)) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            }
+            assertEquals(expectedSuccessCount, successCount);
+            assertEquals(expectedFailCount, failCount);
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    private static @NonNull ThreadPoolExecutor getThreadPoolExecutor(int concurrentRequests) {
+        AtomicInteger threadIndex = new AtomicInteger();
+        return new ThreadPoolExecutor(
+                concurrentRequests,
+                concurrentRequests,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(concurrentRequests),
+                runnable -> {
+                    Thread thread = new Thread(runnable);
+                    thread.setName("manual-seckill-" + threadIndex.incrementAndGet());
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy()
+        );
     }
 
     private Long resolveActiveSeckillSkuId(Long skuId) {
