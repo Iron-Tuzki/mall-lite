@@ -17,8 +17,11 @@ import com.tuzki.mall.seckill.entity.SeckillSku;
 import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
 import com.tuzki.mall.seckill.mapper.SeckillRequestMapper;
 import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
+import com.tuzki.mall.seckill.message.SeckillOrderMessage;
+import com.tuzki.mall.seckill.message.SeckillOrderMessageSender;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
 import com.tuzki.mall.seckill.service.SeckillCompensationService;
+import com.tuzki.mall.seckill.service.SeckillService;
 import com.tuzki.mall.seckill.sentinel.SeckillSentinelResources;
 import com.tuzki.mall.seckill.scheduling.SeckillPreheatTask;
 import com.tuzki.mall.user.service.LoginSessionService;
@@ -30,6 +33,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.transaction.BeforeTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.TransactionDefinition;
@@ -45,6 +49,10 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -104,7 +112,15 @@ class SeckillApiIntegrationTest {
     private SeckillCompensationService seckillCompensationService;
 
     @Autowired
+    private SeckillService seckillService;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @MockitoBean
+    private SeckillOrderMessageSender seckillOrderMessageSender;
+
+    private SeckillOrderMessage lastSeckillOrderMessage;
 
     @BeforeTransaction
     void cleanCommittedSeckillRequests() {
@@ -120,6 +136,11 @@ class SeckillApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM sms_seckill_activity");
         redissonClient.getKeys().deleteByPattern("mall:seckill:*");
         resetInventory(100, 0);
+        lastSeckillOrderMessage = null;
+        doAnswer(invocation -> {
+            lastSeckillOrderMessage = invocation.getArgument(0);
+            return null;
+        }).when(seckillOrderMessageSender).send(any());
     }
 
     @Test
@@ -143,7 +164,7 @@ class SeckillApiIntegrationTest {
     }
 
     @Test
-    void createSeckillOrderAfterPreheatUsesSeckillPriceAndLocksRealStock() throws Exception {
+    void createSeckillOrderAfterPreheatQueuesMessageAndConsumerCreatesOrder() throws Exception {
         SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
         String requestId = newRequestId("success");
 
@@ -155,9 +176,22 @@ class SeckillApiIntegrationTest {
                         .content(seckillOrderRequest(seckillSku.getId(), requestId, 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.orderId").isNumber())
-                .andExpect(jsonPath("$.data.totalAmount").value(39.90))
-                .andExpect(jsonPath("$.data.payAmount").value(39.90));
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"))
+                .andExpect(jsonPath("$.data.seckillSkuId").value(seckillSku.getId()))
+                .andExpect(jsonPath("$.data.requestId").value(requestId));
+
+        verify(seckillOrderMessageSender).send(any(SeckillOrderMessage.class));
+        assertNotNull(lastSeckillOrderMessage);
+        assertEquals(TestSeedData.USER_ID, lastSeckillOrderMessage.getUserId());
+        assertEquals(seckillSku.getId(), lastSeckillOrderMessage.getSeckillSkuId());
+
+        SeckillRequest queuedRequest = getSeckillRequest(seckillSku.getId(), requestId);
+        assertEquals(SeckillRequest.STATUS_PRE_DEDUCTED, queuedRequest.getStatus());
+        assertEquals(null, queuedRequest.getOrderId());
+        assertEquals("1", readRedisStock(seckillSku.getId()));
+        assertEquals(2, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+
+        seckillService.processQueuedSeckillOrder(lastSeckillOrderMessage);
 
         Order order = getOrderByRequestId(seckillRequestId(seckillSku.getId(), requestId));
         assertEquals(new BigDecimal("39.90"), order.getTotalAmount());
@@ -176,6 +210,15 @@ class SeckillApiIntegrationTest {
         assertEquals(30, seckillRequest.getStatus());
         assertEquals(order.getId(), seckillRequest.getOrderId());
         assertEquals(null, seckillRequest.getFailReason());
+
+        mockMvc.perform(get("/api/seckill/orders/result")
+                        .header("Authorization", bearerToken())
+                        .param("seckillSkuId", String.valueOf(seckillSku.getId()))
+                        .param("requestId", requestId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.orderId").value(order.getId()));
     }
 
     @Test
@@ -307,7 +350,7 @@ class SeckillApiIntegrationTest {
     }
 
     @Test
-    void createSeckillOrderReturnsExistingOrderWhenRequestIdRepeated() throws Exception {
+    void createSeckillOrderReturnsProcessingWhenRequestIdRepeatedBeforeConsumerFinished() throws Exception {
         SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
         String requestId = newRequestId("idempotent");
         preheat(seckillSku.getActivityId());
@@ -317,9 +360,8 @@ class SeckillApiIntegrationTest {
                         .contentType("application/json")
                         .content(seckillOrderRequest(seckillSku.getId(), requestId, 1)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
-
-        Order firstOrder = getOrderByRequestId(seckillRequestId(seckillSku.getId(), requestId));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
         mockMvc.perform(post("/api/seckill/orders")
                         .header("Authorization", bearerToken())
@@ -327,14 +369,13 @@ class SeckillApiIntegrationTest {
                         .content(seckillOrderRequest(seckillSku.getId(), requestId, 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.orderId").value(firstOrder.getId()))
-                .andExpect(jsonPath("$.data.orderNo").value(firstOrder.getOrderNo()));
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"));
 
-        assertEquals(1L, orderMapper.selectCount(new LambdaQueryWrapper<Order>()
+        assertEquals(0L, orderMapper.selectCount(new LambdaQueryWrapper<Order>()
                 .eq(Order::getUserId, TestSeedData.USER_ID)
                 .eq(Order::getRequestId, seckillRequestId(seckillSku.getId(), requestId))));
         assertEquals("1", readRedisStock(seckillSku.getId()));
-        assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+        assertEquals(2, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
 
     }
 
@@ -349,9 +390,8 @@ class SeckillApiIntegrationTest {
                         .contentType("application/json")
                         .content(seckillOrderRequest(seckillSku.getId(), requestId, 1)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value(409))
-                .andExpect(jsonPath("$.message").value("seckill request is processing"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"));
     }
 
     @Test
@@ -382,14 +422,28 @@ class SeckillApiIntegrationTest {
                         .contentType("application/json")
                         .content(seckillOrderRequest(seckillSku.getId(), failedRequestId, 1)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("insufficient stock"));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.status").value("PROCESSING"));
+
+        assertNotNull(lastSeckillOrderMessage);
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> seckillService.processQueuedSeckillOrder(lastSeckillOrderMessage));
+        assertEquals("insufficient stock", exception.getMessage());
 
         assertEquals("1", readRedisStock(seckillSku.getId()));
         assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
         SeckillRequest failedRequest = getSeckillRequest(seckillSku.getId(), failedRequestId);
         assertEquals(50, failedRequest.getStatus());
         assertEquals("insufficient stock", failedRequest.getFailReason());
+
+        resetInventory(1, 0);
+        seckillService.processQueuedSeckillOrder(lastSeckillOrderMessage);
+        assertEquals(0L, orderMapper.selectCount(new LambdaQueryWrapper<Order>()
+                .eq(Order::getUserId, TestSeedData.USER_ID)
+                .eq(Order::getRequestId, seckillRequestId(seckillSku.getId(), failedRequestId))));
+        assertEquals("1", readRedisStock(seckillSku.getId()));
+        SeckillRequest compensatedRequest = getSeckillRequest(seckillSku.getId(), failedRequestId);
+        assertEquals(SeckillRequest.STATUS_COMPENSATED, compensatedRequest.getStatus());
 
         resetInventory(1, 0);
         mockMvc.perform(post("/api/seckill/orders")
@@ -474,7 +528,7 @@ class SeckillApiIntegrationTest {
         assertEquals("1", readRedisStock(seckillSku.getId()));
         preheat(seckillSku.getActivityId());
         assertEquals("1", readRedisStock(seckillSku.getId()));
-        assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+        assertEquals(2, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
     }
 
     @Test

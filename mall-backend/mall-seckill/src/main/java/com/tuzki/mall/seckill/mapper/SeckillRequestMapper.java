@@ -54,6 +54,28 @@ public interface SeckillRequestMapper extends BaseMapper<SeckillRequest> {
                                               @Param("requestId") String requestId);
 
     /**
+     * 查询指定秒杀请求流水，用于结果查询等不需要加锁的只读场景。
+     *
+     * @param userId 用户ID
+     * @param seckillSkuId 秒杀活动商品ID
+     * @param requestId 秒杀请求幂等号
+     * @return 秒杀请求流水，不存在时返回 null
+     */
+    @Select("""
+            SELECT id, request_id, user_id, activity_id, seckill_sku_id, sku_id, quantity, status, order_id,
+                   fail_reason, retry_count, request_ip, create_time, update_time, deleted
+              FROM sms_seckill_request
+             WHERE user_id = #{userId}
+               AND seckill_sku_id = #{seckillSkuId}
+               AND request_id = #{requestId}
+               AND deleted = 0
+             LIMIT 1
+            """)
+    SeckillRequest selectByUniqueKey(@Param("userId") Long userId,
+                                     @Param("seckillSkuId") Long seckillSkuId,
+                                     @Param("requestId") String requestId);
+
+    /**
      * 查询超时未完成的 Redis 预扣成功流水，用于后台补偿任务批量处理。
      *
      * @param timeoutBefore 超时边界时间，更新时间早于等于该时间才会被扫描

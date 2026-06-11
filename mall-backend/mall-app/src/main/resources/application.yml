@@ -130,6 +130,13 @@ mall:
       window-seconds: 5
       user-limit: 3
       ip-limit: 10
+    rabbit:
+      order-exchange: mall.seckill.order.exchange
+      order-queue: mall.seckill.order.queue
+      order-routing-key: mall.seckill.order.routing-key
+      failed-exchange: mall.seckill.failed.exchange
+      failed-queue: mall.seckill.failed.queue
+      failed-routing-key: mall.seckill.failed.routing-key
   coupon:
     rabbit:
       coupon-reward-exchange: mall.coupon-reward.exchange

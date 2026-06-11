@@ -2,7 +2,7 @@
 
 ## 一、设计目标
 
-本阶段先实现秒杀功能的后端 MVP，目标是把“活动资格校验、秒杀库存预扣、用户限购、最终创建订单”这条链路打通。
+本阶段先实现秒杀功能的后端 MVP，并在 MVP 基础上补齐“活动资格校验、秒杀库存预扣、用户限购、MQ 异步削峰、最终创建订单、失败补偿”这条链路。
 
 第一版秒杀模块只负责秒杀活动入口和资格控制，不重写交易链路。抢购资格确认后，继续复用现有订单、库存、超时取消和支付流程。
 
@@ -13,20 +13,21 @@
 3. 抢购时使用 Redis 原子脚本预扣秒杀库存，避免活动库存超卖。
 4. 支持同一用户的限购控制。
 5. 支持请求幂等，避免同一秒杀请求重复扣减 Redis 库存。
-6. 秒杀抢购成功后创建待支付订单，并使用秒杀价生成订单金额和明细价格。
-7. Redis 预扣成功但订单创建失败时，同步补偿 Redis 库存和用户限购标记。
+6. 秒杀抢购预扣成功后投递 MQ，接口返回处理中状态。
+7. MQ 消费成功后创建待支付订单，并使用秒杀价生成订单金额和明细价格。
+8. Redis 预扣成功但消息投递或订单创建失败时，补偿 Redis 库存和用户限购标记。
+9. 支持请求流水、后台补偿任务、定时预热、Sentinel 接口限流和 Redis 用户/IP 防刷。
 
-暂不处理：
+后续可继续增强：
 
-1. RabbitMQ 异步排队下单。
-2. 秒杀请求流水表和后台补偿任务。
-3. 前端秒杀页面。
-4. 活动自动预热定时任务。
-5. 防刷、人机校验、接口隐藏 URL。
+1. 秒杀接口隐藏 URL。
+2. 验证码或人机校验。
+3. 更细粒度的风控策略。
+4. MQ 消费监控、告警和人工重放后台。
 
 ## 二、总体方案
 
-采用“同步抢购 + Redis 原子预扣 + 复用现有下单链路”的方案。
+采用“入口快速预扣 + MQ 异步削峰 + 复用现有下单链路”的方案。
 
 核心边界：
 
@@ -34,13 +35,15 @@
 秒杀模块
   -> 校验活动、活动商品、时间窗口、限购规则
   -> Redis 原子预扣秒杀库存
-  -> 调用订单模块创建待支付订单
+  -> 写入秒杀请求流水
+  -> 投递秒杀下单 MQ
+  -> 消费者调用订单模块创建待支付订单
 
 订单模块
   -> 继续负责用户、地址、商品、真实库存锁定、订单幂等、订单明细、超时取消消息
 ```
 
-这样第一版可以把秒杀核心能力做清楚，同时不破坏已有订单链路。
+这样可以把高并发入口和真实下单链路解耦，同时不破坏已有订单链路。
 
 ## 三、模块与代码边界
 
@@ -249,13 +252,16 @@ Lua 脚本一次性完成：
 -> 校验 quantity > 0
 -> 校验 quantity <= limit_quantity
 -> 执行 Redis Lua 脚本预扣活动库存并写入限购标记
--> 重复请求则不重复扣 Redis 库存，继续交给订单模块幂等查询原订单
+-> 重复请求则不重复扣 Redis 库存，根据秒杀请求流水状态返回处理中、成功或失败
 -> 其他预扣失败场景按返回码抛出业务异常
--> 构造 OrderCreateRequest
--> requestId 使用 seckill:{seckillSkuId}:{requestId}
--> 调用订单模块带价格覆盖的下单能力
--> 创建订单成功，返回订单结果
--> 创建订单失败，补偿 Redis 秒杀库存和用户限购标记
+-> 秒杀请求流水推进到 PRE_DEDUCTED
+-> 投递秒杀下单 MQ
+-> 接口返回 PROCESSING
+-> 消费者构造 OrderCreateRequest
+-> 订单 requestId 使用 seckill:{seckillSkuId}:{requestId}
+-> 消费者调用订单模块带价格覆盖的下单能力
+-> 创建订单成功，扣减 sms_seckill_sku.stock_count 并标记 ORDER_CREATED
+-> 创建订单失败，补偿 Redis 秒杀库存和用户限购标记并标记 COMPENSATED
 ```
 
 订单创建时仍由订单模块完成真实库存锁定：
@@ -264,17 +270,21 @@ Lua 脚本一次性完成：
 InventoryService.lockStock(skuId, quantity)
 ```
 
-秒杀预热库存不能大于真实可用库存。若 Redis 有库存但真实库存不足，订单模块会失败，秒杀模块同步补偿 Redis。
+秒杀预热库存不能大于真实可用库存。若 Redis 有库存但真实库存不足，订单模块会失败，秒杀消费者补偿 Redis。
 
 ## 八、一致性策略
 
-### 1. Redis 预扣成功，订单创建成功
+### 1. Redis 预扣成功，消息投递成功
 
-正常返回订单。
+接口返回 `PROCESSING`，前端通过结果查询接口短轮询最终状态。
 
-### 2. Redis 预扣成功，订单创建失败
+### 2. MQ 消费成功，订单创建成功
 
-秒杀模块同步补偿：
+消费者创建待支付订单并锁定真实库存，随后扣减 `sms_seckill_sku.stock_count`，最后把请求流水推进到 `ORDER_CREATED`。
+
+### 3. MQ 消费失败，订单创建失败
+
+秒杀消费者补偿：
 
 ```text
 mall:seckill:stock:{seckillSkuId} + quantity
@@ -282,13 +292,13 @@ mall:seckill:user:{seckillSkuId}:{userId} - quantity，扣到 0 时删除
 删除 mall:seckill:request:{seckillSkuId}:{userId}:{requestId}
 ```
 
-### 3. Redis 库存和 MySQL 真实库存不一致
+### 4. Redis 库存和 MySQL 真实库存不一致
 
-订单模块真实锁库存失败后，秒杀模块补偿 Redis。第一版通过文档约束预热库存不能超过真实可用库存。
+订单模块真实锁库存失败后，秒杀消费者补偿 Redis。第一版通过文档约束预热库存不能超过真实可用库存。
 
-### 4. 服务在 Redis 预扣后崩溃
+### 5. 服务在 Redis 预扣后崩溃
 
-第一版不引入请求流水和补偿任务。用户限购标记和请求幂等标记设置 TTL，到活动结束后自动释放。该场景可能导致极少量活动库存短暂占用，作为 MVP 风险接受。
+请求流水会停留在 `PRE_DEDUCTED`，后台补偿任务扫描超时流水并回补 Redis。用户限购标记和请求幂等标记仍设置 TTL，到活动结束后自动释放，作为最终兜底。
 
 ## 九、异常处理
 
@@ -305,7 +315,7 @@ mall:seckill:user:{seckillSkuId}:{userId} - quantity，扣到 0 时删除
 | 超过限购数量 | 400 | seckill purchase limit exceeded |
 | 秒杀库存未预热 | 400 | seckill stock not preheated |
 | 秒杀库存不足 | 400 | seckill stock sold out |
-| 重复请求处理中 | 409 | seckill request is processing |
+| 重复请求处理中 | 200 | PROCESSING |
 | 重复失败请求 | 409 | 流水记录中的失败原因 |
 
 ## 十、测试设计
@@ -338,7 +348,7 @@ mall:seckill:user:{seckillSkuId}:{userId} - quantity，扣到 0 时删除
 
 并发抢购时，成功数量不能超过 Redis 预热库存。
 
-## 十一、实现顺序建议
+## 十一、已实现链路
 
 1. 新增 `mall-seckill` Maven 模块并接入 `mall-app`。
 2. 新增秒杀表结构脚本。
@@ -347,17 +357,20 @@ mall:seckill:user:{seckillSkuId}:{userId} - quantity，扣到 0 时删除
 5. 实现秒杀活动查询接口。
 6. 实现秒杀库存预热接口。
 7. 实现 Redis Lua 预扣和补偿逻辑。
-8. 实现秒杀下单接口。
-9. 补充活动状态、库存、限购、幂等、补偿、并发测试。
+8. 实现秒杀请求流水、接口幂等和结果查询。
+9. 实现 RabbitMQ 异步削峰下单。
+10. 实现后台补偿任务。
+11. 实现活动自动预热定时任务。
+12. 实现 Sentinel 接口限流和 Redis 用户/IP 防刷。
+13. 补充活动状态、库存、限购、幂等、补偿、并发和异步消费测试。
 
 ## 十二、后续扩展方向
 
-1. 增加秒杀请求流水表，记录预扣、排队、下单成功、失败等状态。
-2. 引入 RabbitMQ 异步排队下单，接口快速返回抢购结果或排队状态。
-3. 增加后台补偿任务，扫描异常请求流水并修正 Redis 和订单状态。
-4. 增加活动自动预热定时任务。
-5. 增加接口隐藏 URL、验证码、风控限流和用户维度访问频控。
-6. 前端增加秒杀列表、倒计时、抢购按钮状态和结果页。
+1. 增加接口隐藏 URL。
+2. 增加验证码或人机校验。
+3. 增加 MQ 积压、消费失败和死信队列监控告警。
+4. 增加后台人工重放、人工补偿和失败流水审计能力。
+5. 继续完善前端结果轮询、失败提示和活动状态展示。
 ## 十三、库存一致性补充
 
 当前实现中，`sms_seckill_sku.stock_count` 表示秒杀活动商品的持久化剩余活动库存，Redis 的 `mall:seckill:stock:{seckillSkuId}` 表示活动期间用于高并发预扣的热库存。
@@ -379,9 +392,12 @@ mall:seckill:user:{seckillSkuId}:{userId} - quantity，扣到 0 时删除
 
 ```text
 Redis Lua 原子预扣成功
--> 调用订单模块创建待支付订单并锁定真实库存
+-> 秒杀请求流水推进到 PRE_DEDUCTED
+-> 投递 mall.seckill.order.queue
+-> 接口返回 PROCESSING
+-> 消费者调用订单模块创建待支付订单并锁定真实库存
 -> 订单创建成功后，原子扣减 sms_seckill_sku.stock_count
--> 返回订单创建结果
+-> 秒杀请求流水推进到 ORDER_CREATED
 ```
 
 `sms_seckill_sku.stock_count` 使用条件更新扣减：
@@ -396,13 +412,13 @@ UPDATE sms_seckill_sku
    AND stock_count >= #{quantity}
 ```
 
-前面流程已经做过幂等处理，如果该更新影响行数不是 1，说明数据库侧活动库存不足或活动商品不可用，本次下单按 `seckill stock sold out` 失败处理，并触发 Redis 预扣补偿。
+前面流程已经做过幂等处理，如果该更新影响行数不是 1，说明数据库侧活动库存不足或活动商品不可用，本次消费按 `seckill stock sold out` 失败处理，并触发 Redis 预扣补偿。
 
 ### 3. 重复请求与补偿
 
-同一用户、同一活动商品、同一 `requestId` 重复请求时，Redis Lua 返回重复请求，不再重复扣减 Redis 活动库存，也不会重复扣减 `sms_seckill_sku.stock_count`，后续由订单模块幂等返回原订单。
+同一用户、同一活动商品、同一 `requestId` 重复请求时，Redis Lua 返回重复请求，不再重复扣减 Redis 活动库存，也不会重复扣减 `sms_seckill_sku.stock_count`。应用层根据 `sms_seckill_request` 当前状态返回处理中、成功或失败。
 
-如果 Redis 预扣成功后，订单创建、真实库存锁定或活动库存持久扣减任一环节失败，当前事务回滚订单侧变更，并同步补偿 Redis 活动库存、用户限购占用和请求幂等标记。
+如果 Redis 预扣成功后，消息投递失败，接口链路会立即补偿 Redis 活动库存、用户限购占用和请求幂等标记。如果 MQ 消费阶段订单创建、真实库存锁定或活动库存持久扣减任一环节失败，消费者事务回滚订单侧变更，并补偿 Redis 后把流水推进到 `COMPENSATED`。
 ## 十四、秒杀请求流水表
 
 新增 `sms_seckill_request` 作为秒杀请求的持久化流水和幂等兜底表。它记录同一用户、同一活动商品、同一 `requestId` 的处理状态，后续补偿任务、MQ 异步下单和问题排查都以该表为抓手。
@@ -420,7 +436,7 @@ UNIQUE KEY uk_user_sku_request (user_id, seckill_sku_id, request_id)
 1. `sms_seckill_request` 负责持久化幂等，解决 Redis key 过期、服务重启、补偿排查等问题。
 2. Redis Lua 中的 `mall:seckill:request:{seckillSkuId}:{userId}:{requestId}` 继续保留，负责高并发瞬间的原子防重和快速拒绝。
 
-因此当前不删除 Lua 脚本里的幂等判断。后续如果切到完整 MQ 异步状态机，再评估是否弱化 Redis 请求幂等 key。
+Lua 层幂等 key 仍然保留，因为它可以在热点请求进入数据库前完成原子防重。`sms_seckill_request` 则负责持久化状态、结果查询和补偿排查。
 
 ### 2. 状态流转
 
@@ -440,13 +456,65 @@ UNIQUE KEY uk_user_sku_request (user_id, seckill_sku_id, request_id)
 
 重复请求按状态处理：
 
-1. `ORDER_CREATED` 且存在 `order_id`：走订单幂等查询，返回原订单。
-2. `INIT` 或 `PRE_DEDUCTED`：说明原请求仍在处理，返回 `seckill request is processing`。
+1. `ORDER_CREATED` 且存在 `order_id`：返回 `SUCCESS` 和原订单 id。
+2. `INIT` 或 `PRE_DEDUCTED`：说明原请求仍在处理，返回 `PROCESSING`。
 3. `FAILED` 或 `COMPENSATED`：返回流水记录中的失败原因。
 
 `FOR UPDATE` 只能保证读取最新已提交流水并在并发更新时等待行锁释放，不代表一定等待原秒杀请求完整下单结束。因此处理中状态仍然需要显式返回或由上层后续扩展短轮询。
 
-### 4. 后台补偿任务
+### 4. MQ 异步削峰下单
+
+秒杀接口只完成入口校验、用户/IP 防刷、Sentinel 限流、流水幂等和 Redis 预扣。预扣成功后投递 `mall.seckill.order.queue`，接口立即返回：
+
+```json
+{
+  "seckillSkuId": 1,
+  "requestId": "client-request-id",
+  "status": "PROCESSING"
+}
+```
+
+消费者收到 `SeckillOrderMessage` 后异步执行真实下单：
+
+```text
+读取 sms_seckill_request
+-> 仅 PRE_DEDUCTED 状态允许继续消费
+-> 调用订单模块创建待支付订单并锁定真实库存
+-> 扣减 sms_seckill_sku.stock_count
+-> 标记流水 ORDER_CREATED 并写入 order_id
+```
+
+消费端只处理 `PRE_DEDUCTED` 流水。若 RabbitMQ 重投旧消息，或人工重放一条已经 `ORDER_CREATED`、`FAILED`、`COMPENSATED` 的消息，消费者直接忽略，避免失败补偿后的旧消息在库存恢复后反向创建订单。
+
+RabbitMQ 配置：
+
+```yaml
+mall:
+  seckill:
+    rabbit:
+      order-exchange: mall.seckill.order.exchange
+      order-queue: mall.seckill.order.queue
+      order-routing-key: mall.seckill.order.routing-key
+      failed-exchange: mall.seckill.failed.exchange
+      failed-queue: mall.seckill.failed.queue
+      failed-routing-key: mall.seckill.failed.routing-key
+```
+
+结果查询接口：
+
+```http
+GET /api/seckill/orders/result?seckillSkuId={seckillSkuId}&requestId={requestId}
+```
+
+返回状态：
+
+| status | 含义 |
+| --- | --- |
+| PROCESSING | 已预扣或排队中 |
+| SUCCESS | 订单已创建，返回 `orderId` |
+| FAILED | 请求失败或已补偿，返回 `failReason` |
+
+### 5. 后台补偿任务
 
 第一版后台补偿任务只处理长时间停留在 `PRE_DEDUCTED` 状态的流水。该状态表示 Redis 已经预扣成功，但请求没有继续推进到订单创建成功、失败或已补偿，可能是服务进程中断或主链路异常导致。
 
@@ -490,7 +558,9 @@ Redis 补偿脚本增加请求幂等 key 判断：只有 `mall:seckill:request:{
 -> Sentinel 接口级 QPS 保护
 -> 请求流水幂等
 -> Redis Lua 库存预扣
--> MySQL 扣库存和建单
+-> 投递秒杀下单 MQ
+-> 返回 PROCESSING
+-> 消费者异步创建订单、扣减 sms_seckill_sku.stock_count、更新流水
 ```
 
 ### 1. Redis 用户/IP 防刷

@@ -58,6 +58,11 @@ public class SeckillRequestLogService {
         seckillRequestMapper.markCompensated(id, normalizeReason(failReason));
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public SeckillRequest getByUniqueKey(Long userId, Long seckillSkuId, String requestId) {
+        return seckillRequestMapper.selectByUniqueKey(userId, seckillSkuId, requestId);
+    }
+
     private SeckillRequest selectByUniqueKey(Long userId, Long seckillSkuId, String requestId) {
         return seckillRequestMapper.selectByUniqueKeyForUpdate(userId, seckillSkuId, requestId);
     }

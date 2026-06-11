@@ -1,8 +1,9 @@
 package com.tuzki.mall.seckill.service;
 
-import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.seckill.dto.SeckillOrderCreateRequest;
+import com.tuzki.mall.seckill.message.SeckillOrderMessage;
 import com.tuzki.mall.seckill.vo.SeckillActivityVO;
+import com.tuzki.mall.seckill.vo.SeckillOrderResultVO;
 
 import java.time.Duration;
 import java.util.List;
@@ -41,5 +42,22 @@ public interface SeckillService {
      * @param request 秒杀下单请求
      * @return 创建后的订单核心信息
      */
-    OrderCreateVO createSeckillOrder(Long userId, SeckillOrderCreateRequest request);
+    SeckillOrderResultVO createSeckillOrder(Long userId, SeckillOrderCreateRequest request);
+
+    /**
+     * 查询秒杀下单结果。
+     *
+     * @param userId 当前登录用户 ID
+     * @param seckillSkuId 秒杀活动商品 ID
+     * @param requestId 秒杀请求幂等号
+     * @return 秒杀请求当前结果，可能为 PROCESSING、SUCCESS 或 FAILED
+     */
+    SeckillOrderResultVO getSeckillOrderResult(Long userId, Long seckillSkuId, String requestId);
+
+    /**
+     * 处理 Redis 预扣成功后的秒杀异步下单消息。
+     *
+     * @param message 秒杀下单消息，包含创建订单所需的请求流水和下单参数
+     */
+    void processQueuedSeckillOrder(SeckillOrderMessage message);
 }

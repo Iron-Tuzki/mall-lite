@@ -2,11 +2,11 @@ package com.tuzki.mall.seckill.controller;
 
 import com.tuzki.mall.common.api.Result;
 import com.tuzki.mall.common.exception.BusinessException;
-import com.tuzki.mall.order.vo.OrderCreateVO;
 import com.tuzki.mall.seckill.dto.SeckillOrderCreateRequest;
 import com.tuzki.mall.seckill.ratelimit.SeckillRateLimitService;
 import com.tuzki.mall.seckill.service.SeckillService;
 import com.tuzki.mall.seckill.vo.SeckillActivityVO;
+import com.tuzki.mall.seckill.vo.SeckillOrderResultVO;
 import com.tuzki.mall.user.service.LoginSessionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -49,7 +50,7 @@ public class SeckillController {
     }
 
     @PostMapping("/orders")
-    public Result<OrderCreateVO> createSeckillOrder(
+    public Result<SeckillOrderResultVO> createSeckillOrder(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             HttpServletRequest httpRequest,
             @Valid @RequestBody SeckillOrderCreateRequest request) {
@@ -59,6 +60,17 @@ public class SeckillController {
             throw new BusinessException(429, "seckill request too frequent");
         }
         return Result.success(seckillService.createSeckillOrder(userId, request));
+    }
+
+    @GetMapping("/orders/result")
+    public Result<SeckillOrderResultVO> getSeckillOrderResult(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam Long seckillSkuId,
+            @RequestParam String requestId) {
+        return Result.success(seckillService.getSeckillOrderResult(
+                resolveCurrentUserId(authorization),
+                seckillSkuId,
+                requestId));
     }
 
     private Long resolveCurrentUserId(String authorization) {
