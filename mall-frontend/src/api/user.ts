@@ -45,6 +45,19 @@ export interface SignInProfile {
   signedDays: number[];
 }
 
+export interface SignInMonthProfile {
+  month: number;
+  daysInMonth: number;
+  signedCount: number;
+  signedDays: number[];
+}
+
+export interface SignInYearlyProfile {
+  year: number;
+  yearSignedCount: number;
+  months: SignInMonthProfile[];
+}
+
 export function login(request: LoginRequest) {
   return http.post<Result<LoginResult>>('/api/users/login', request);
 }
@@ -63,6 +76,12 @@ export function logout() {
 
 export function getSignInProfile() {
   return http.get<Result<SignInProfile>>('/api/users/sign-in/profile');
+}
+
+export function getSignInYearlyProfile(year?: number) {
+  return http.get<Result<SignInYearlyProfile>>('/api/users/sign-in/yearly', {
+    params: year ? { year } : undefined
+  });
 }
 
 export function signInToday() {

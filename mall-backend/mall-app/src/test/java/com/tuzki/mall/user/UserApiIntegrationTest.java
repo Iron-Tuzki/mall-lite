@@ -178,6 +178,35 @@ class UserApiIntegrationTest {
                 .andExpect(jsonPath("$.message").value("username or password incorrect"));
     }
 
+    @Test
+    void getSignInYearlyProfileRejectsMissingToken() throws Exception {
+        mockMvc.perform(get("/api/users/sign-in/yearly"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("missing login token"));
+    }
+
+    @Test
+    void getSignInYearlyProfileReturnsTwelveMonthHeatmap() throws Exception {
+        String username = "yearly_sign_user_" + System.nanoTime();
+        registerUser(username, "password123", "Yearly Sign User");
+        String token = loginAndReturnToken(username, "password123");
+
+        mockMvc.perform(get("/api/users/sign-in/yearly")
+                        .param("year", "2026")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.year").value(2026))
+                .andExpect(jsonPath("$.data.yearSignedCount").isNumber())
+                .andExpect(jsonPath("$.data.months.length()").value(12))
+                .andExpect(jsonPath("$.data.months[0].month").value(1))
+                .andExpect(jsonPath("$.data.months[0].daysInMonth").value(31))
+                .andExpect(jsonPath("$.data.months[0].signedCount").isNumber())
+                .andExpect(jsonPath("$.data.months[0].signedDays").isArray());
+    }
+
     private void registerUser(String username, String password, String nickname) throws Exception {
         mockMvc.perform(post("/api/users/register")
                         .contentType("application/json")
@@ -190,5 +219,22 @@ class UserApiIntegrationTest {
                                 """.formatted(username, password, nickname)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    private String loginAndReturnToken(String username, String password) throws Exception {
+        return mockMvc.perform(post("/api/users/login")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "username": "%s",
+                                  "password": "%s"
+                                }
+                                """.formatted(username, password)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn()
+                .getResponse()
+                .getContentAsString()
+                .replaceAll(".*\"token\":\"([^\"]+)\".*", "$1");
     }
 }

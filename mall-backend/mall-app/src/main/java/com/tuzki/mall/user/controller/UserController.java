@@ -9,6 +9,7 @@ import com.tuzki.mall.user.service.SignInService;
 import com.tuzki.mall.user.service.UserService;
 import com.tuzki.mall.user.vo.UserLoginVO;
 import com.tuzki.mall.user.vo.SignInProfileVO;
+import com.tuzki.mall.user.vo.SignInYearlyProfileVO;
 import com.tuzki.mall.user.vo.UserVO;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.util.StringUtils;
 
@@ -70,6 +72,12 @@ public class UserController {
     @GetMapping("/sign-in/profile")
     public Result<SignInProfileVO> getSignInProfile(@RequestHeader(value = "Authorization", required = false) String authorization) {
         return Result.success(signInService.getCurrentMonthProfile(resolveCurrentUserId(authorization)));
+    }
+
+    @GetMapping("/sign-in/yearly")
+    public Result<SignInYearlyProfileVO> getSignInYearlyProfile(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                                @RequestParam(value = "year", required = false) Integer year) {
+        return Result.success(signInService.getYearlyProfile(resolveCurrentUserId(authorization), year));
     }
 
     @GetMapping("/{id}")

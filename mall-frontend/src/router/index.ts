@@ -44,6 +44,14 @@ const router = createRouter({
       }
     },
     {
+      path: '/profile/sign-in/yearly',
+      name: 'sign-in-yearly',
+      component: () => import('@/views/SignInYearlyView.vue'),
+      meta: {
+        requiresAuth: true
+      }
+    },
+    {
       path: '/favorites',
       name: 'favorites',
       component: () => import('@/views/FavoriteProductsView.vue'),

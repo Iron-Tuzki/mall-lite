@@ -3,7 +3,9 @@ package com.tuzki.mall.user.service.impl;
 import com.tuzki.mall.user.message.CouponRewardMessage;
 import com.tuzki.mall.user.message.CouponRewardMessageSender;
 import com.tuzki.mall.user.service.SignInService;
+import com.tuzki.mall.user.vo.SignInMonthProfileVO;
 import com.tuzki.mall.user.vo.SignInProfileVO;
+import com.tuzki.mall.user.vo.SignInYearlyProfileVO;
 import org.redisson.api.RBitSet;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
@@ -71,6 +73,52 @@ public class RedisSignInService implements SignInService {
     public SignInProfileVO getCurrentMonthProfile(Long userId) {
         LocalDate today = LocalDate.now(BUSINESS_ZONE);
         return buildProfile(getCurrentMonthBitSet(userId, today), today);
+    }
+
+    @Override
+    public SignInYearlyProfileVO getYearlyProfile(Long userId, Integer year) {
+        int targetYear = resolveTargetYear(year);
+        List<SignInMonthProfileVO> months = new ArrayList<>();
+        int yearSignedCount = 0;
+        for (int month = 1; month <= 12; month++) {
+            YearMonth yearMonth = YearMonth.of(targetYear, month);
+            SignInMonthProfileVO monthProfile = buildMonthProfile(userId, yearMonth);
+            months.add(monthProfile);
+            yearSignedCount += monthProfile.getSignedCount();
+        }
+
+        SignInYearlyProfileVO profile = new SignInYearlyProfileVO();
+        profile.setYear(targetYear);
+        profile.setYearSignedCount(yearSignedCount);
+        profile.setMonths(months);
+        return profile;
+    }
+
+    private int resolveTargetYear(Integer year) {
+        int currentYear = LocalDate.now(BUSINESS_ZONE).getYear();
+        int targetYear = year == null ? currentYear : year;
+        if (targetYear < 2000 || targetYear > currentYear + 1) {
+            throw new IllegalArgumentException("sign-in year out of range");
+        }
+        return targetYear;
+    }
+
+    private SignInMonthProfileVO buildMonthProfile(Long userId, YearMonth yearMonth) {
+        RBitSet bitSet = redissonClient.getBitSet(buildKey(userId, yearMonth.atDay(1)));
+        List<Integer> signedDays = new ArrayList<>();
+        int daysInMonth = yearMonth.lengthOfMonth();
+        for (int day = 1; day <= daysInMonth; day++) {
+            if (bitSet.get(day - 1L)) {
+                signedDays.add(day);
+            }
+        }
+
+        SignInMonthProfileVO profile = new SignInMonthProfileVO();
+        profile.setMonth(yearMonth.getMonthValue());
+        profile.setDaysInMonth(daysInMonth);
+        profile.setSignedCount(signedDays.size());
+        profile.setSignedDays(signedDays);
+        return profile;
     }
 
     private SignInProfileVO buildProfile(RBitSet bitSet, LocalDate today) {

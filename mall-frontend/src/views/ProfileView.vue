@@ -319,6 +319,9 @@ async function handleLogout() {
               {{ todaySigned ? '今日已签到' : '今日签到' }}
             </el-button>
           </div>
+          <button class="yearly-sign-link" type="button" @click="router.push('/profile/sign-in/yearly')">
+            年度详情 <el-icon><ArrowRight /></el-icon>
+          </button>
           <div class="sign-summary">
             <div>
               <strong>{{ signedCount }}</strong>
@@ -606,6 +609,21 @@ async function handleLogout() {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 18px;
+}
+
+.yearly-sign-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  width: 100%;
+  margin: -6px 0 14px;
+  padding: 0;
+  color: #ff4d00;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .sign-summary div {
