@@ -138,6 +138,9 @@ mall:
       failed-queue: mall.seckill.failed.queue
       failed-routing-key: mall.seckill.failed.routing-key
   coupon:
+    expiration:
+      enabled: true
+      fixed-delay-ms: 60000
     rabbit:
       coupon-reward-exchange: mall.coupon-reward.exchange
       coupon-reward-queue: mall.coupon-reward.queue

@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.tuzki.mall.user.entity.UserCoupon;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+
+import java.time.LocalDateTime;
 
 /**
  * 用户优惠券 Mapper，负责写入和查询用户实际领取到的优惠券记录。
@@ -29,4 +32,19 @@ public interface UserCouponMapper extends BaseMapper<UserCoupon> {
     Long countBySource(@Param("userId") Long userId,
                        @Param("sourceType") Integer sourceType,
                        @Param("sourceKey") String sourceKey);
+
+    /**
+     * 批量将已经超过有效期且尚未使用的用户优惠券更新为已过期状态。
+     *
+     * @param now 当前业务时间
+     * @return 本次更新的优惠券数量
+     */
+    @Update("""
+            UPDATE sms_user_coupon
+            SET status = 3
+            WHERE status = 1
+              AND deleted = 0
+              AND valid_end_time < #{now}
+            """)
+    int expireUnusedCoupons(@Param("now") LocalDateTime now);
 }
