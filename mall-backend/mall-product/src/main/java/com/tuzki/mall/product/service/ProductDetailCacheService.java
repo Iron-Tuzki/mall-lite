@@ -67,6 +67,10 @@ public class ProductDetailCacheService {
         getBucket(productId).set(NULL_VALUE, ttlSeconds, TimeUnit.SECONDS);
     }
 
+    public void invalidate(Long productId) {
+        getBucket(productId).delete();
+    }
+
     private RBucket<String> getBucket(Long productId) {
         String key = productCacheProperties.getDetailKeyPrefix() + productId;
         return redissonClient.getBucket(key, StringCodec.INSTANCE);

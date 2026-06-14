@@ -131,6 +131,10 @@ public class ProductHotDetailCacheService {
         getBucket(productId).set(NULL_VALUE, ttlSeconds, TimeUnit.SECONDS);
     }
 
+    public void invalidate(Long productId) {
+        getBucket(productId).delete();
+    }
+
     private RBucket<String> getBucket(Long productId) {
         return redissonClient.getBucket(
                 productCacheProperties.getHotDetailKeyPrefix() + productId,

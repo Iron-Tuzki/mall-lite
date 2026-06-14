@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tuzki.mall.admin.product.dto.AdminProductRequest;
 import com.tuzki.mall.admin.product.dto.AdminProductSkuRequest;
 import com.tuzki.mall.admin.product.service.AdminProductService;
+import com.tuzki.mall.admin.product.service.ProductCacheInvalidationService;
 import com.tuzki.mall.admin.product.vo.AdminProductSkuVO;
 import com.tuzki.mall.admin.product.vo.AdminProductVO;
 import com.tuzki.mall.common.api.PageResult;
@@ -50,14 +51,18 @@ public class AdminProductServiceImpl implements AdminProductService {
 
     private final InventoryMapper inventoryMapper;
 
+    private final ProductCacheInvalidationService productCacheInvalidationService;
+
     public AdminProductServiceImpl(ProductMapper productMapper,
                                    SkuMapper skuMapper,
                                    CategoryMapper categoryMapper,
-                                   InventoryMapper inventoryMapper) {
+                                   InventoryMapper inventoryMapper,
+                                   ProductCacheInvalidationService productCacheInvalidationService) {
         this.productMapper = productMapper;
         this.skuMapper = skuMapper;
         this.categoryMapper = categoryMapper;
         this.inventoryMapper = inventoryMapper;
+        this.productCacheInvalidationService = productCacheInvalidationService;
     }
 
     @Override
@@ -125,7 +130,9 @@ public class AdminProductServiceImpl implements AdminProductService {
                 retainedSkuIds.add(skuRequest.getId());
             }
         }
+        // 软删除前台未传入到后台的skuid
         softDeleteRemovedSkus(productId, retainedSkuIds);
+        productCacheInvalidationService.invalidateProductDetailAfterCommit(productId);
         return getProduct(productId);
     }
 
@@ -142,6 +149,7 @@ public class AdminProductServiceImpl implements AdminProductService {
             skuMapper.updateById(sku);
             softDeleteInventory(sku.getId());
         }
+        productCacheInvalidationService.invalidateProductDetailAfterCommit(productId);
     }
 
     @Override
@@ -150,6 +158,7 @@ public class AdminProductServiceImpl implements AdminProductService {
         Product product = getProductOrThrow(productId);
         product.setStatus(status);
         productMapper.updateById(product);
+        productCacheInvalidationService.invalidateProductDetailAfterCommit(productId);
         return getProduct(productId);
     }
 
