@@ -8,6 +8,7 @@ import com.tuzki.mall.admin.seckill.vo.AdminSeckillActivityVO;
 import com.tuzki.mall.admin.seckill.vo.AdminSeckillSkuVO;
 import com.tuzki.mall.common.api.PageResult;
 import com.tuzki.mall.common.api.Result;
+import com.tuzki.mall.seckill.service.SeckillService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,8 +29,12 @@ public class AdminSeckillActivityController {
 
     private final AdminSeckillService adminSeckillService;
 
-    public AdminSeckillActivityController(AdminSeckillService adminSeckillService) {
+    private final SeckillService seckillService;
+
+    public AdminSeckillActivityController(AdminSeckillService adminSeckillService,
+                                          SeckillService seckillService) {
         this.adminSeckillService = adminSeckillService;
+        this.seckillService = seckillService;
     }
 
     @GetMapping
@@ -66,6 +71,12 @@ public class AdminSeckillActivityController {
     public Result<AdminSeckillActivityVO> updateStatus(@PathVariable Long activityId,
                                                        @Valid @RequestBody AdminStatusUpdateRequest request) {
         return Result.success(adminSeckillService.updateActivityStatus(activityId, request.getStatus()));
+    }
+
+    @PostMapping("/{activityId}/preheat")
+    public Result<Void> preheatActivity(@PathVariable Long activityId) {
+        seckillService.preheatActivity(activityId);
+        return Result.success();
     }
 
     @PostMapping("/{activityId}/skus")

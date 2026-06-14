@@ -1,14 +1,17 @@
 package com.tuzki.mall.admin;
 
 import com.tuzki.mall.seckill.mapper.SeckillActivityMapper;
+import com.tuzki.mall.seckill.service.SeckillService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -23,6 +26,9 @@ class AdminSeckillApiIntegrationTest {
 
     @Autowired
     private SeckillActivityMapper seckillActivityMapper;
+
+    @MockitoBean
+    private SeckillService seckillService;
 
     @Test
     void createSeckillActivityPersistsActivity() throws Exception {
@@ -48,5 +54,14 @@ class AdminSeckillApiIntegrationTest {
                 .andExpect(jsonPath("$.data.skus.length()").value(0));
 
         assertEquals(beforeCount + 1, seckillActivityMapper.selectCount(null));
+    }
+
+    @Test
+    void preheatActivityDelegatesToSeckillService() throws Exception {
+        mockMvc.perform(post("/api/admin/seckill/activities/{activityId}/preheat", 123L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        verify(seckillService).preheatActivity(123L);
     }
 }
