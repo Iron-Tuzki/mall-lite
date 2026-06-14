@@ -31,6 +31,46 @@ const router = createRouter({
       component: () => import('@/views/SeckillView.vue')
     },
     {
+      path: '/admin',
+      component: () => import('@/views/admin/AdminLayoutView.vue'),
+      children: [
+        {
+          path: '',
+          redirect: '/admin/products'
+        },
+        {
+          path: 'products',
+          name: 'admin-products',
+          component: () => import('@/views/admin/AdminProductListView.vue')
+        },
+        {
+          path: 'products/new',
+          name: 'admin-product-new',
+          component: () => import('@/views/admin/AdminProductEditView.vue')
+        },
+        {
+          path: 'products/:id',
+          name: 'admin-product-edit',
+          component: () => import('@/views/admin/AdminProductEditView.vue')
+        },
+        {
+          path: 'seckill',
+          name: 'admin-seckill',
+          component: () => import('@/views/admin/AdminSeckillListView.vue')
+        },
+        {
+          path: 'seckill/new',
+          name: 'admin-seckill-new',
+          component: () => import('@/views/admin/AdminSeckillEditView.vue')
+        },
+        {
+          path: 'seckill/:id',
+          name: 'admin-seckill-edit',
+          component: () => import('@/views/admin/AdminSeckillEditView.vue')
+        }
+      ]
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/LoginView.vue')

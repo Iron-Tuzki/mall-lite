@@ -1,4 +1,5 @@
 # Project exclude paths
+/mall-backend/mall-admin/target/
 /mall-backend/mall-app/target/
 /mall-backend/mall-cart/target/
 /mall-backend/mall-common/target/

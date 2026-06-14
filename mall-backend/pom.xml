@@ -28,6 +28,7 @@
         <module>mall-cart</module>
         <module>mall-payment</module>
         <module>mall-seckill</module>
+        <module>mall-admin</module>
         <module>mall-app</module>
     </modules>
 
