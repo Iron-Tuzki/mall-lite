@@ -254,7 +254,7 @@ public class AdminSeckillServiceImpl implements AdminSeckillService {
 
     private AdminSeckillActivityVO toActivityVO(SeckillActivity activity, boolean includeSkus) {
         AdminSeckillActivityVO activityVO = new AdminSeckillActivityVO();
-        activityVO.setId(activity.getId());
+        activityVO.setId(String.valueOf(activity.getId()));
         activityVO.setName(activity.getName());
         activityVO.setStartTime(activity.getStartTime());
         activityVO.setEndTime(activity.getEndTime());
@@ -274,9 +274,9 @@ public class AdminSeckillServiceImpl implements AdminSeckillService {
         Sku sku = skuMapper.selectById(seckillSku.getSkuId());
         Product product = sku == null ? null : productMapper.selectById(sku.getProductId());
         AdminSeckillSkuVO skuVO = new AdminSeckillSkuVO();
-        skuVO.setId(seckillSku.getId());
-        skuVO.setActivityId(seckillSku.getActivityId());
-        skuVO.setSkuId(seckillSku.getSkuId());
+        skuVO.setId(String.valueOf(seckillSku.getId()));
+        skuVO.setActivityId(String.valueOf(seckillSku.getActivityId()));
+        skuVO.setSkuId(String.valueOf(seckillSku.getSkuId()));
         skuVO.setProductName(product == null ? null : product.getName());
         skuVO.setSkuName(sku == null ? null : sku.getSkuName());
         skuVO.setOriginalPrice(sku == null ? null : sku.getPrice());

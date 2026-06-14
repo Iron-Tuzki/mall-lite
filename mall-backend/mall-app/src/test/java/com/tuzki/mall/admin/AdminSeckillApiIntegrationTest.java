@@ -42,6 +42,7 @@ class AdminSeckillApiIntegrationTest {
                                 """.formatted(suffix)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").isString())
                 .andExpect(jsonPath("$.data.name").value("Admin Seckill " + suffix))
                 .andExpect(jsonPath("$.data.status").value(1))
                 .andExpect(jsonPath("$.data.skus.length()").value(0));

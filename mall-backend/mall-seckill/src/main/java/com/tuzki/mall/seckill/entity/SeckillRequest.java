@@ -1,5 +1,7 @@
 package com.tuzki.mall.seckill.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.LocalDateTime;
@@ -22,6 +24,7 @@ public class SeckillRequest {
 
     public static final int STATUS_CANCEL_COMPENSATED = 60;
 
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     private String requestId;

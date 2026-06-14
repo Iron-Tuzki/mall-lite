@@ -1,5 +1,7 @@
 package com.tuzki.mall.seckill.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.math.BigDecimal;
@@ -11,6 +13,7 @@ import java.time.LocalDateTime;
 @TableName("sms_seckill_sku")
 public class SeckillSku {
 
+    @TableId(type = IdType.AUTO)
     private Long id;
 
     private Long activityId;

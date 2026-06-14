@@ -7,11 +7,11 @@ import java.math.BigDecimal;
  */
 public class AdminSeckillSkuVO {
 
-    private Long id;
+    private String id;
 
-    private Long activityId;
+    private String activityId;
 
-    private Long skuId;
+    private String skuId;
 
     private String productName;
 
@@ -29,27 +29,27 @@ public class AdminSeckillSkuVO {
 
     private Integer status;
 
-    public Long getId() {
+    public String getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(String id) {
         this.id = id;
     }
 
-    public Long getActivityId() {
+    public String getActivityId() {
         return activityId;
     }
 
-    public void setActivityId(Long activityId) {
+    public void setActivityId(String activityId) {
         this.activityId = activityId;
     }
 
-    public Long getSkuId() {
+    public String getSkuId() {
         return skuId;
     }
 
-    public void setSkuId(Long skuId) {
+    public void setSkuId(String skuId) {
         this.skuId = skuId;
     }
 

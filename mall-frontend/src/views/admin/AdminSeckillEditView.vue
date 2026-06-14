@@ -26,8 +26,8 @@ const selectableSkus = ref<AdminProductSku[]>([]);
 const selectedSku = ref<AdminProductSku | null>(null);
 const activitySkus = ref<AdminSeckillSku[]>([]);
 const skuKeyword = ref('');
-const activityId = computed(() => Number(route.params.id || 0));
-const isEdit = computed(() => activityId.value > 0);
+const activityId = computed(() => String(route.params.id || ''));
+const isEdit = computed(() => activityId.value.length > 0);
 
 const form = reactive<AdminSeckillActivityRequest>({
   name: '',
@@ -148,7 +148,7 @@ async function addSelectedSku() {
     return;
   }
   const response = await addAdminSeckillSku(activityId.value, {
-    skuId: selectedSku.value.id || 0,
+    skuId: selectedSku.value.id || '',
     ...skuForm
   });
   if (!response.data.success) {
@@ -224,28 +224,38 @@ async function removeSku(row: AdminSeckillSku) {
           <el-button :icon="Plus" type="primary" plain @click="openSkuDialog">选择商品</el-button>
         </div>
       </template>
-      <el-table :data="activitySkus" empty-text="暂无活动商品">
-        <el-table-column prop="productName" label="商品" min-width="150" />
-        <el-table-column prop="skuName" label="SKU" min-width="150" />
-        <el-table-column label="秒杀价" width="150">
-          <template #default="{ row }"><el-input-number v-model="row.seckillPrice" :min="0.01" :precision="2" /></template>
+      <el-table class="activity-sku-table" :data="activitySkus" empty-text="暂无活动商品">
+        <el-table-column prop="productName" label="商品" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="skuName" label="SKU" min-width="150" show-overflow-tooltip />
+        <el-table-column label="秒杀价" width="130">
+          <template #default="{ row }">
+            <el-input-number v-model="row.seckillPrice" class="compact-number" :controls="false" :min="0.01" :precision="2" />
+          </template>
         </el-table-column>
-        <el-table-column label="库存" width="140">
-          <template #default="{ row }"><el-input-number v-model="row.stockCount" :min="0" /></template>
+        <el-table-column label="库存" width="126">
+          <template #default="{ row }">
+            <el-input-number v-model="row.stockCount" class="compact-number" :controls="false" :min="0" />
+          </template>
         </el-table-column>
-        <el-table-column label="限购" width="140">
-          <template #default="{ row }"><el-input-number v-model="row.limitQuantity" :min="1" /></template>
+        <el-table-column label="限购" width="126">
+          <template #default="{ row }">
+            <el-input-number v-model="row.limitQuantity" class="compact-number" :controls="false" :min="1" />
+          </template>
         </el-table-column>
-        <el-table-column label="排序" width="120">
-          <template #default="{ row }"><el-input-number v-model="row.sort" :min="0" /></template>
+        <el-table-column label="排序" width="110">
+          <template #default="{ row }">
+            <el-input-number v-model="row.sort" class="sort-number" :controls="false" :min="0" />
+          </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="86" align="center">
           <template #default="{ row }"><el-switch v-model="row.status" :active-value="1" :inactive-value="0" /></template>
         </el-table-column>
-        <el-table-column label="操作" width="150">
+        <el-table-column label="操作" width="136" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="saveSku(row)">保存</el-button>
-            <el-button link type="danger" :icon="Delete" @click="removeSku(row)">删除</el-button>
+            <div class="row-actions">
+              <el-button link type="primary" @click="saveSku(row)">保存</el-button>
+              <el-button link type="danger" :icon="Delete" @click="removeSku(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -327,5 +337,38 @@ async function removeSku(row: AdminSeckillSku) {
 .sku-form {
   justify-content: flex-start;
   margin-top: 14px;
+}
+
+.activity-sku-table :deep(.el-table__cell) {
+  padding: 8px 0;
+}
+
+.compact-number {
+  width: 96px;
+}
+
+.sort-number {
+  width: 80px;
+}
+
+.compact-number :deep(.el-input__wrapper),
+.sort-number :deep(.el-input__wrapper) {
+  padding: 0 8px;
+}
+
+.compact-number :deep(.el-input__inner),
+.sort-number :deep(.el-input__inner) {
+  text-align: left;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.row-actions .el-button + .el-button {
+  margin-left: 0;
 }
 </style>

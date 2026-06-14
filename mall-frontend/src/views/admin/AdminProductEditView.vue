@@ -182,33 +182,41 @@ async function saveProduct() {
           <el-button :icon="Plus" type="primary" plain @click="addSku">添加 SKU</el-button>
         </div>
       </template>
-      <el-table :data="form.skus">
+      <el-table class="product-sku-table" :data="form.skus">
         <el-table-column label="SKU 编码" min-width="150">
-          <template #default="{ row }"><el-input v-model="row.skuCode" /></template>
+          <template #default="{ row }"><el-input v-model="row.skuCode" class="table-input" /></template>
         </el-table-column>
         <el-table-column label="SKU 名称" min-width="150">
-          <template #default="{ row }"><el-input v-model="row.skuName" /></template>
+          <template #default="{ row }"><el-input v-model="row.skuName" class="table-input" /></template>
         </el-table-column>
         <el-table-column label="规格 JSON" min-width="180">
-          <template #default="{ row }"><el-input v-model="row.specData" /></template>
+          <template #default="{ row }"><el-input v-model="row.specData" class="table-input" /></template>
         </el-table-column>
-        <el-table-column label="价格" width="150">
-          <template #default="{ row }"><el-input-number v-model="row.price" :min="0" :precision="2" /></template>
+        <el-table-column label="价格" width="130">
+          <template #default="{ row }">
+            <el-input-number v-model="row.price" class="compact-number" :controls="false" :min="0" :precision="2" />
+          </template>
         </el-table-column>
-        <el-table-column label="原价" width="150">
-          <template #default="{ row }"><el-input-number v-model="row.originalPrice" :min="0" :precision="2" /></template>
+        <el-table-column label="原价" width="130">
+          <template #default="{ row }">
+            <el-input-number v-model="row.originalPrice" class="compact-number" :controls="false" :min="0" :precision="2" />
+          </template>
         </el-table-column>
-        <el-table-column label="库存" width="140">
-          <template #default="{ row }"><el-input-number v-model="row.availableStock" :min="0" /></template>
+        <el-table-column label="库存" width="126">
+          <template #default="{ row }">
+            <el-input-number v-model="row.availableStock" class="compact-number" :controls="false" :min="0" />
+          </template>
         </el-table-column>
-        <el-table-column label="状态" width="110">
+        <el-table-column label="状态" width="86" align="center">
           <template #default="{ row }">
             <el-switch v-model="row.status" :active-value="1" :inactive-value="0" />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="90">
+        <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ $index }">
-            <el-button link type="danger" :icon="Delete" @click="removeSku($index)">删除</el-button>
+            <div class="row-actions">
+              <el-button link type="danger" :icon="Delete" @click="removeSku($index)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -254,5 +262,36 @@ async function saveProduct() {
 
 .sku-card {
   margin-top: 18px;
+}
+
+.product-sku-table :deep(.el-table__cell) {
+  padding: 8px 0;
+}
+
+.table-input {
+  width: 100%;
+}
+
+.table-input :deep(.el-input__wrapper),
+.compact-number :deep(.el-input__wrapper) {
+  padding: 0 8px;
+}
+
+.compact-number {
+  width: 96px;
+}
+
+.compact-number :deep(.el-input__inner) {
+  text-align: left;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.row-actions .el-button + .el-button {
+  margin-left: 0;
 }
 </style>
