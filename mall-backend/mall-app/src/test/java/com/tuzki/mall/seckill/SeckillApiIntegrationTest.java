@@ -11,6 +11,7 @@ import com.tuzki.mall.order.entity.Order;
 import com.tuzki.mall.order.entity.OrderItem;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
+import com.tuzki.mall.order.service.OrderService;
 import com.tuzki.mall.seckill.entity.SeckillActivity;
 import com.tuzki.mall.seckill.entity.SeckillRequest;
 import com.tuzki.mall.seckill.entity.SeckillSku;
@@ -95,6 +96,9 @@ class SeckillApiIntegrationTest {
 
     @Autowired
     private OrderItemMapper orderItemMapper;
+
+    @Autowired
+    private OrderService orderService;
 
     @Autowired
     private LoginSessionService loginSessionService;
@@ -219,6 +223,41 @@ class SeckillApiIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.data.orderId").value(order.getId()));
+    }
+
+    @Test
+    void cancelTimeoutSeckillOrderRestoresInventoryAndSeckillStockOnce() throws Exception {
+        SeckillSku seckillSku = createActiveSeckillSku(new BigDecimal("39.90"), 2, 1);
+        String requestId = newRequestId("timeout-cancel");
+        preheat(seckillSku.getActivityId());
+
+        mockMvc.perform(post("/api/seckill/orders")
+                        .header("Authorization", bearerToken())
+                        .contentType("application/json")
+                        .content(seckillOrderRequest(seckillSku.getId(), requestId, 1)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        seckillService.processQueuedSeckillOrder(lastSeckillOrderMessage);
+
+        Order order = getOrderByRequestId(seckillRequestId(seckillSku.getId(), requestId));
+        assertEquals(99, getInventory().getAvailableStock());
+        assertEquals(1, getInventory().getLockedStock());
+        assertEquals(1, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+        assertEquals("1", readRedisStock(seckillSku.getId()));
+
+        orderService.cancelTimeoutOrder(order.getId());
+        orderService.cancelTimeoutOrder(order.getId());
+
+        Inventory inventory = getInventory();
+        assertEquals(100, inventory.getAvailableStock());
+        assertEquals(0, inventory.getLockedStock());
+        assertEquals(2, seckillSkuMapper.selectById(seckillSku.getId()).getStockCount());
+        assertEquals("2", readRedisStock(seckillSku.getId()));
+        assertEquals(
+                SeckillRequest.STATUS_CANCEL_COMPENSATED,
+                getSeckillRequestInCurrentTransaction(seckillSku.getId(), requestId).getStatus());
+
     }
 
     @Test
@@ -753,6 +792,16 @@ class SeckillApiIntegrationTest {
                         .eq(SeckillRequest::getUserId, TestSeedData.USER_ID)
                         .eq(SeckillRequest::getSeckillSkuId, seckillSkuId)
                         .eq(SeckillRequest::getRequestId, requestId)));
+        assertNotNull(seckillRequest);
+        return seckillRequest;
+    }
+
+    private SeckillRequest getSeckillRequestInCurrentTransaction(Long seckillSkuId, String requestId) {
+        SeckillRequest seckillRequest = seckillRequestMapper.selectOne(
+                new LambdaQueryWrapper<SeckillRequest>()
+                        .eq(SeckillRequest::getUserId, TestSeedData.USER_ID)
+                        .eq(SeckillRequest::getSeckillSkuId, seckillSkuId)
+                        .eq(SeckillRequest::getRequestId, requestId));
         assertNotNull(seckillRequest);
         return seckillRequest;
     }

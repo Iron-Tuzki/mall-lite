@@ -367,7 +367,8 @@ public class SeckillServiceImpl implements SeckillService {
             return toProcessingResult(seckillSku.getId(), request.getRequestId());
         }
         if (Integer.valueOf(SeckillRequest.STATUS_FAILED).equals(status)
-                || Integer.valueOf(SeckillRequest.STATUS_COMPENSATED).equals(status)) {
+                || Integer.valueOf(SeckillRequest.STATUS_COMPENSATED).equals(status)
+                || Integer.valueOf(SeckillRequest.STATUS_CANCEL_COMPENSATED).equals(status)) {
             throw new BusinessException(409, duplicatedFailureMessage(requestLog));
         }
         throw new BusinessException(409, "seckill request duplicated");
@@ -442,7 +443,8 @@ public class SeckillServiceImpl implements SeckillService {
         if (Integer.valueOf(SeckillRequest.STATUS_ORDER_CREATED).equals(requestLog.getStatus())) {
             result.setStatus(RESULT_SUCCESS);
         } else if (Integer.valueOf(SeckillRequest.STATUS_FAILED).equals(requestLog.getStatus())
-                || Integer.valueOf(SeckillRequest.STATUS_COMPENSATED).equals(requestLog.getStatus())) {
+                || Integer.valueOf(SeckillRequest.STATUS_COMPENSATED).equals(requestLog.getStatus())
+                || Integer.valueOf(SeckillRequest.STATUS_CANCEL_COMPENSATED).equals(requestLog.getStatus())) {
             result.setStatus(RESULT_FAILED);
         } else {
             result.setStatus(RESULT_PROCESSING);

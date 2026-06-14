@@ -76,6 +76,23 @@ public interface SeckillRequestMapper extends BaseMapper<SeckillRequest> {
                                      @Param("requestId") String requestId);
 
     /**
+     * 根据订单 ID 查询秒杀请求流水，用于订单取消后的秒杀库存补偿。
+     *
+     * @param orderId 订单 ID
+     * @return 秒杀请求流水，不存在时返回 null
+     */
+    @Select("""
+            SELECT id, request_id, user_id, activity_id, seckill_sku_id, sku_id, quantity, status, order_id,
+                   fail_reason, retry_count, request_ip, create_time, update_time, deleted
+              FROM sms_seckill_request
+             WHERE order_id = #{orderId}
+               AND deleted = 0
+             LIMIT 1
+             FOR UPDATE
+            """)
+    SeckillRequest selectByOrderId(@Param("orderId") Long orderId);
+
+    /**
      * 查询超时未完成的 Redis 预扣成功流水，用于后台补偿任务批量处理。
      *
      * @param timeoutBefore 超时边界时间，更新时间早于等于该时间才会被扫描
@@ -182,6 +199,24 @@ public interface SeckillRequestMapper extends BaseMapper<SeckillRequest> {
                AND deleted = 0
             """)
     int markCompensatedIfPreDeducted(@Param("id") Long id, @Param("failReason") String failReason);
+
+    /**
+     * 将已创建订单的秒杀请求流水标记为订单取消已补偿，避免重复回补秒杀活动库存。
+     *
+     * @param id 秒杀请求流水 ID
+     * @param failReason 补偿说明
+     * @return 受影响行数，返回 1 表示本次获得补偿资格，返回 0 表示已被其他流程处理
+     */
+    @Update("""
+            UPDATE sms_seckill_request
+               SET status = 60,
+                   fail_reason = #{failReason},
+                   update_time = NOW()
+             WHERE id = #{id}
+               AND status = 30
+               AND deleted = 0
+            """)
+    int markCancelCompensatedIfOrderCreated(@Param("id") Long id, @Param("failReason") String failReason);
 
     /**
      * 记录后台补偿失败并增加重试次数，下一轮任务会继续处理未超过重试上限的流水。

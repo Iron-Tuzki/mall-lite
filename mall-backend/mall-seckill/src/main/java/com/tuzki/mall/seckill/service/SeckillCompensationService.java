@@ -1,11 +1,14 @@
 package com.tuzki.mall.seckill.service;
 
+import com.tuzki.mall.common.exception.BusinessException;
 import com.tuzki.mall.seckill.entity.SeckillRequest;
 import com.tuzki.mall.seckill.mapper.SeckillRequestMapper;
+import com.tuzki.mall.seckill.mapper.SeckillSkuMapper;
 import com.tuzki.mall.seckill.redis.SeckillRedisService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,13 +23,19 @@ public class SeckillCompensationService {
 
     private static final String COMPENSATION_SUCCESS_REASON = "seckill request compensation succeeded";
 
+    private static final String CANCEL_COMPENSATION_SUCCESS_REASON = "seckill order cancellation compensation succeeded";
+
     private final SeckillRequestMapper seckillRequestMapper;
+
+    private final SeckillSkuMapper seckillSkuMapper;
 
     private final SeckillRedisService seckillRedisService;
 
     public SeckillCompensationService(SeckillRequestMapper seckillRequestMapper,
+                                      SeckillSkuMapper seckillSkuMapper,
                                       SeckillRedisService seckillRedisService) {
         this.seckillRequestMapper = seckillRequestMapper;
+        this.seckillSkuMapper = seckillSkuMapper;
         this.seckillRedisService = seckillRedisService;
     }
 
@@ -54,6 +63,32 @@ public class SeckillCompensationService {
         return compensatedCount;
     }
 
+    /**
+     * 补偿已创建订单后又被取消的秒杀订单，回补 MySQL 秒杀库存并尽力同步 Redis 占用。
+     *
+     * @param orderId 被取消的订单 ID
+     * @return true 表示本次完成秒杀取消补偿，false 表示该订单无需补偿或已被补偿
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public boolean compensateCancelledOrder(Long orderId) {
+        SeckillRequest request = seckillRequestMapper.selectByOrderId(orderId);
+        if (request == null || !Integer.valueOf(SeckillRequest.STATUS_ORDER_CREATED).equals(request.getStatus())) {
+            return false;
+        }
+        int markedRows = seckillRequestMapper.markCancelCompensatedIfOrderCreated(
+                request.getId(),
+                CANCEL_COMPENSATION_SUCCESS_REASON);
+        if (markedRows == 0) {
+            return false;
+        }
+        int releasedRows = seckillSkuMapper.releaseStock(request.getSeckillSkuId(), request.getQuantity());
+        if (releasedRows != 1) {
+            throw new BusinessException(500, "release seckill stock failed");
+        }
+        compensateRedisAfterOrderCancelled(request);
+        return true;
+    }
+
     private boolean compensateSingleRequest(SeckillRequest request) {
         try {
             seckillRedisService.compensate(
@@ -70,6 +105,19 @@ public class SeckillCompensationService {
             // 补偿失败记录重试次数
             seckillRequestMapper.increaseCompensationRetry(request.getId(), normalizeReason(exception.getMessage()));
             return false;
+        }
+    }
+
+    private void compensateRedisAfterOrderCancelled(SeckillRequest request) {
+        try {
+            seckillRedisService.compensate(
+                    request.getSeckillSkuId(),
+                    request.getUserId(),
+                    request.getRequestId(),
+                    request.getQuantity());
+        } catch (RuntimeException exception) {
+            LOGGER.warn("compensate seckill redis after order cancellation failed, orderId={}, requestId={}, seckillSkuId={}",
+                    request.getOrderId(), request.getRequestId(), request.getSeckillSkuId(), exception);
         }
     }
 

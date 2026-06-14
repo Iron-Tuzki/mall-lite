@@ -11,6 +11,7 @@ import com.tuzki.mall.order.entity.OrderRequest;
 import com.tuzki.mall.order.enums.OrderCancelType;
 import com.tuzki.mall.order.enums.OrderRequestStatus;
 import com.tuzki.mall.order.enums.OrderStatus;
+import com.tuzki.mall.order.event.OrderCancelledEvent;
 import com.tuzki.mall.order.mapper.OrderItemMapper;
 import com.tuzki.mall.order.mapper.OrderMapper;
 import com.tuzki.mall.order.mapper.OrderRequestMapper;
@@ -31,6 +32,7 @@ import com.tuzki.mall.user.mapper.AddressMapper;
 import com.tuzki.mall.user.mapper.UserMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -84,6 +86,8 @@ public class OrderServiceImpl implements OrderService {
 
     private final OrderTimeoutMessageSender orderTimeoutMessageSender;
 
+    private final ApplicationEventPublisher applicationEventPublisher;
+
     public OrderServiceImpl(UserMapper userMapper,
                             AddressMapper addressMapper,
                             SkuMapper skuMapper,
@@ -92,7 +96,8 @@ public class OrderServiceImpl implements OrderService {
                             OrderMapper orderMapper,
                             OrderItemMapper orderItemMapper,
                             OrderRequestMapper orderRequestMapper,
-                            OrderTimeoutMessageSender orderTimeoutMessageSender) {
+                            OrderTimeoutMessageSender orderTimeoutMessageSender,
+                            ApplicationEventPublisher applicationEventPublisher) {
         this.userMapper = userMapper;
         this.addressMapper = addressMapper;
         this.skuMapper = skuMapper;
@@ -102,6 +107,7 @@ public class OrderServiceImpl implements OrderService {
         this.orderItemMapper = orderItemMapper;
         this.orderRequestMapper = orderRequestMapper;
         this.orderTimeoutMessageSender = orderTimeoutMessageSender;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Override
@@ -406,6 +412,7 @@ public class OrderServiceImpl implements OrderService {
         for (OrderItem orderItem : orderItems) {
             inventoryService.releaseStock(orderItem.getSkuId(), orderItem.getQuantity());
         }
+        applicationEventPublisher.publishEvent(new OrderCancelledEvent(order.getId(), cancelType));
         return true;
     }
 

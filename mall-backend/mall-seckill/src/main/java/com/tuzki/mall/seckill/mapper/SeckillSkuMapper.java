@@ -27,4 +27,21 @@ public interface SeckillSkuMapper extends BaseMapper<SeckillSku> {
                AND stock_count >= #{quantity}
             """)
     int deductStock(@Param("seckillSkuId") Long seckillSkuId, @Param("quantity") Integer quantity);
+
+    /**
+     * 原子回补秒杀活动商品库存。
+     *
+     * @param seckillSkuId 秒杀活动商品 ID
+     * @param quantity 需要回补的购买数量
+     * @return 受影响行数，返回 1 表示回补成功，返回 0 表示活动商品不存在或不可用
+     */
+    @Update("""
+            UPDATE sms_seckill_sku
+               SET stock_count = stock_count + #{quantity},
+                   update_time = NOW()
+             WHERE id = #{seckillSkuId}
+               AND status = 1
+               AND deleted = 0
+            """)
+    int releaseStock(@Param("seckillSkuId") Long seckillSkuId, @Param("quantity") Integer quantity);
 }

@@ -20,6 +20,8 @@ public class SeckillRequest {
 
     public static final int STATUS_COMPENSATED = 50;
 
+    public static final int STATUS_CANCEL_COMPENSATED = 60;
+
     private Long id;
 
     private String requestId;
