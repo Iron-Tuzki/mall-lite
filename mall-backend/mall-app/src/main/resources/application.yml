@@ -48,6 +48,11 @@ springdoc:
     path: /v3/api-docs
 
 mall:
+  outbox:
+    relay:
+      enabled: true
+      fixed-delay-ms: 60000
+      batch-size: 100
   sentinel:
     enabled: true
     project-name: mall-lite

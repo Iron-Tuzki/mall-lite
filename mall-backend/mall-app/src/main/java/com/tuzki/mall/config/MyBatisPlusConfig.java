@@ -14,7 +14,8 @@ import org.springframework.context.annotation.Configuration;
         "com.tuzki.mall.order.mapper",
         "com.tuzki.mall.cart.mapper",
         "com.tuzki.mall.payment.mapper",
-        "com.tuzki.mall.seckill.mapper"
+        "com.tuzki.mall.seckill.mapper",
+        "com.tuzki.mall.outbox.mapper"
 })
 public class MyBatisPlusConfig {
 }
