@@ -8,6 +8,10 @@ import com.tuzki.mall.outbox.mapper.OutboxMessageMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -34,12 +38,16 @@ public class OutboxMessageService {
 
     private final ObjectMapper objectMapper;
 
+    private final TransactionTemplate transactionTemplate;
+
     public OutboxMessageService(OutboxMessageMapper outboxMessageMapper,
                                 OutboxRabbitPublisher outboxRabbitPublisher,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                PlatformTransactionManager transactionManager) {
         this.outboxMessageMapper = outboxMessageMapper;
         this.outboxRabbitPublisher = outboxRabbitPublisher;
         this.objectMapper = objectMapper;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     /**
@@ -57,8 +65,16 @@ public class OutboxMessageService {
                                  String routingKey,
                                  Object payload) {
         OutboxMessage message = buildMessage(aggregateType, aggregateId, exchangeName, routingKey, payload);
-        outboxMessageMapper.insert(message);
-        publishAndMark(message);
+        transactionTemplate.executeWithoutResult(status -> {
+            outboxMessageMapper.insert(message);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    // 本地消息写入数据库的事务提交后再发送消息
+                    publishAndMark(message);
+                }
+            });
+        });
     }
 
     /**

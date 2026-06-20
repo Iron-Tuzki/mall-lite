@@ -3,21 +3,23 @@ package com.tuzki.mall.order.mq;
 import com.tuzki.mall.config.rabbit.OrderRabbitProperties;
 import com.tuzki.mall.order.message.OrderTimeoutMessage;
 import com.tuzki.mall.order.message.OrderTimeoutMessageSender;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import com.tuzki.mall.outbox.service.OutboxMessageService;
 import org.springframework.stereotype.Component;
 
 /**
- * 订单超时消息生产者，负责把订单超时检查消息投递到 RabbitMQ 延迟交换机。
+ * 订单超时消息发送器，负责将订单超时检查消息写入 Outbox 并投递到 RabbitMQ 延迟交换机。
  */
 @Component
-public class OrderTimeoutProducer implements OrderTimeoutMessageSender {
+public class OrderTimeoutSender implements OrderTimeoutMessageSender {
 
-    private final RabbitTemplate rabbitTemplate;
+    private static final String AGGREGATE_TYPE = "ORDER_TIMEOUT";
+
+    private final OutboxMessageService outboxMessageService;
 
     private final OrderRabbitProperties properties;
 
-    public OrderTimeoutProducer(RabbitTemplate rabbitTemplate, OrderRabbitProperties properties) {
-        this.rabbitTemplate = rabbitTemplate;
+    public OrderTimeoutSender(OutboxMessageService outboxMessageService, OrderRabbitProperties properties) {
+        this.outboxMessageService = outboxMessageService;
         this.properties = properties;
     }
 
@@ -28,7 +30,9 @@ public class OrderTimeoutProducer implements OrderTimeoutMessageSender {
      */
     @Override
     public void send(OrderTimeoutMessage message) {
-        rabbitTemplate.convertAndSend(
+        outboxMessageService.createAndPublish(
+                AGGREGATE_TYPE,
+                String.valueOf(message.getOrderId()),
                 properties.getDelayExchange(),
                 properties.getDelayRoutingKey(),
                 message
