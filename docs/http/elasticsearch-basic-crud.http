@@ -1,0 +1,295 @@
+# Elasticsearch 7.17.23 索引与文档 REST CRUD 练习
+# 使用方式：在 IntelliJ IDEA 中从上到下逐条点击请求左侧运行按钮。
+# 安全边界：所有写操作只针对 mall_product_basic_v1，不使用通配符删除索引。
+
+@esHost = http://localhost:9200
+@indexName = mall_product_basic_v1
+
+### 1. 查看节点和版本信息
+# 预期：HTTP 200，version.number 为 7.17.23。
+# @name nodeInfo
+GET {{esHost}}/
+Accept: application/json
+
+###
+
+### 2. 查看集群健康状态
+# 单节点环境下：本练习索引副本数为 0，创建后应为 green；其他索引存在未分配副本时也可能为 yellow。
+# @name clusterHealth
+GET {{esHost}}/_cluster/health
+Accept: application/json
+
+###
+
+### 3. 清理可能残留的同名练习索引
+# ignore_unavailable=true 允许索引不存在，便于从头重复实验。
+# @name cleanupBeforeStart
+DELETE {{esHost}}/{{indexName}}?ignore_unavailable=true
+Accept: application/json
+
+###
+
+### 4. 创建商品练习索引
+# 预期：HTTP 200，acknowledged=true，shards_acknowledged=true。
+# dynamic=strict 会拒绝 Mapping 中未声明的字段，便于发现字段拼写和结构错误。
+# @name createIndex
+PUT {{esHost}}/{{indexName}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "productId": {
+        "type": "long"
+      },
+      "productName": {
+        "type": "text"
+      },
+      "productCode": {
+        "type": "keyword"
+      },
+      "categoryId": {
+        "type": "long"
+      },
+      "price": {
+        "type": "scaled_float",
+        "scaling_factor": 100
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "tags": {
+        "type": "keyword"
+      },
+      "description": {
+        "type": "text"
+      },
+      "createdAt": {
+        "type": "date",
+        "format": "strict_date_optional_time||epoch_millis"
+      }
+    }
+  }
+}
+
+###
+
+### 5. 查询索引完整定义
+# 预期：返回 aliases、mappings 和 settings。
+# @name getIndex
+GET {{esHost}}/{{indexName}}
+Accept: application/json
+
+###
+
+### 6. 单独查询 Mapping
+# 预期：可以检查每个字段的类型。
+# @name getMapping
+GET {{esHost}}/{{indexName}}/_mapping
+Accept: application/json
+
+###
+
+### 7. 为 Mapping 新增品牌字段
+# 预期：HTTP 200，acknowledged=true。
+# 注意：可以追加新字段，但不能用此方式原地修改已有字段类型。
+# @name addBrandMapping
+PUT {{esHost}}/{{indexName}}/_mapping
+Content-Type: application/json
+Accept: application/json
+
+{
+  "properties": {
+    "brandName": {
+      "type": "keyword"
+    }
+  }
+}
+
+###
+
+### 8. 使用指定 ID 创建文档
+# refresh=wait_for 会等待文档对搜索可见。
+# 首次执行预期：HTTP 201，result=created，_version=1。
+# 再次执行同一请求时会完整写入该 ID，预期 result=updated，_version 增加。
+# @name createProduct1001
+PUT {{esHost}}/{{indexName}}/_doc/1001?refresh=wait_for
+Content-Type: application/json
+Accept: application/json
+
+{
+  "productId": 1001,
+  "productName": "无线机械键盘",
+  "productCode": "KEYBOARD-1001",
+  "categoryId": 20,
+  "price": 299.00,
+  "status": "ON_SALE",
+  "tags": [
+    "外设",
+    "键盘"
+  ],
+  "description": "支持无线连接和热插拔的机械键盘",
+  "createdAt": "2026-06-22T09:30:00+08:00",
+  "brandName": "Mall Lite"
+}
+
+###
+
+### 9. 使用自动 ID 创建文档
+# 预期：HTTP 201，result=created，由 Elasticsearch 返回自动生成的 _id。
+# 生产提醒：自动 ID 无法天然保证业务消息重试幂等。
+# @name createProductWithAutoId
+POST {{esHost}}/{{indexName}}/_doc?refresh=wait_for
+Content-Type: application/json
+Accept: application/json
+
+{
+  "productId": 1004,
+  "productName": "桌面显示器支架",
+  "productCode": "STAND-1004",
+  "categoryId": 20,
+  "price": 199.00,
+  "status": "ON_SALE",
+  "tags": [
+    "外设",
+    "支架"
+  ],
+  "description": "支持高度和角度调节的显示器支架",
+  "createdAt": "2026-06-22T09:40:00+08:00",
+  "brandName": "Mall Lite"
+}
+
+###
+
+### 10. 按 ID 查询文档
+# 预期：HTTP 200，found=true，_source 中包含商品字段。
+# @name getProduct1001
+GET {{esHost}}/{{indexName}}/_doc/1001
+Accept: application/json
+
+###
+
+### 11. 使用 PUT 全量写入文档
+# 没有再次提供的旧字段不会保留，因此请求体包含当前文档所需的全部业务字段。
+# 预期：HTTP 200，result=updated，_version 增加。
+# @name replaceProduct1001
+PUT {{esHost}}/{{indexName}}/_doc/1001?refresh=wait_for
+Content-Type: application/json
+Accept: application/json
+
+{
+  "productId": 1001,
+  "productName": "三模机械键盘",
+  "productCode": "KEYBOARD-1001",
+  "categoryId": 20,
+  "price": 289.00,
+  "status": "ON_SALE",
+  "tags": [
+    "外设",
+    "键盘",
+    "三模"
+  ],
+  "description": "支持有线、蓝牙和 2.4G 连接的机械键盘",
+  "createdAt": "2026-06-22T09:30:00+08:00",
+  "brandName": "Mall Lite"
+}
+
+###
+
+### 12. 使用 _update 局部更新文档
+# 只合并 doc 中给出的 price 和 status；底层仍会重新索引文档。
+# 预期：HTTP 200，result=updated，_version 再次增加。
+# @name updateProduct1001
+POST {{esHost}}/{{indexName}}/_update/1001?refresh=wait_for
+Content-Type: application/json
+Accept: application/json
+
+{
+  "doc": {
+    "price": 279.00,
+    "status": "ON_SALE"
+  }
+}
+
+###
+
+### 13. Bulk 批量写入两个商品文档
+# Content-Type 必须为 application/x-ndjson。
+# 每个动作行和数据行各占一行，最后一行后必须保留换行。
+# 预期：HTTP 200，顶层 errors=false；仍应检查每个 items 元素。
+# @name bulkCreateProducts
+POST {{esHost}}/_bulk?refresh=wait_for
+Content-Type: application/x-ndjson
+Accept: application/json
+
+{"index":{"_index":"mall_product_basic_v1","_id":"1002"}}
+{"productId":1002,"productName":"机械键盘","productCode":"KEYBOARD-1002","categoryId":20,"price":399.00,"status":"ON_SALE","tags":["外设","键盘"],"description":"支持热插拔的机械键盘","createdAt":"2026-06-22T10:00:00+08:00","brandName":"Mall Lite"}
+{"index":{"_index":"mall_product_basic_v1","_id":"1003"}}
+{"productId":1003,"productName":"无线鼠标","productCode":"MOUSE-1003","categoryId":20,"price":129.00,"status":"ON_SALE","tags":["外设","鼠标"],"description":"轻量无线鼠标","createdAt":"2026-06-22T10:05:00+08:00","brandName":"Mall Lite"}
+
+###
+
+### 14. 查询当前索引中的所有练习文档
+# 预期：固定 ID、自动 ID 和 Bulk 文档均可搜索到；按 productId 升序返回。
+# @name searchAllProducts
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "query": {
+    "match_all": {}
+  },
+  "sort": [
+    {
+      "productId": "asc"
+    }
+  ]
+}
+
+###
+
+### 15. 再次查询固定 ID，观察全量写入和局部更新结果
+# 预期：productName 为“三模机械键盘”，price 为 279，其他字段仍存在。
+# @name getUpdatedProduct1001
+GET {{esHost}}/{{indexName}}/_doc/1001
+Accept: application/json
+
+###
+
+### 16. 删除固定 ID 文档
+# 预期：HTTP 200，result=deleted，_version 增加。
+# @name deleteProduct1001
+DELETE {{esHost}}/{{indexName}}/_doc/1001?refresh=wait_for
+Accept: application/json
+
+###
+
+### 17. 验证文档已删除
+# 这是预期错误演示：应返回 HTTP 404 和 found=false，不代表 Elasticsearch 服务异常。
+# @name verifyProductDeleted
+GET {{esHost}}/{{indexName}}/_doc/1001
+Accept: application/json
+
+###
+
+### 18. 删除练习索引
+# 只删除名称固定的 mall_product_basic_v1。
+# 预期：HTTP 200，acknowledged=true。
+# @name deletePracticeIndex
+DELETE {{esHost}}/{{indexName}}
+Accept: application/json
+
+###
+
+### 19. 验证索引已删除
+# 这是预期错误演示：应返回 HTTP 404。
+# @name verifyIndexDeleted
+HEAD {{esHost}}/{{indexName}}
+
