@@ -292,4 +292,3 @@ Accept: application/json
 # 这是预期错误演示：应返回 HTTP 404。
 # @name verifyIndexDeleted
 HEAD {{esHost}}/{{indexName}}
-

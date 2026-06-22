@@ -583,4 +583,3 @@ DELETE /mall_product_basic_v1/_doc/1001?refresh=wait_for
 6. 创建、查询、全量写入、局部更新和删除文档；
 7. 使用 Bulk 写入并检查部分失败；
 8. 说明为什么商城仍以 MySQL 作为业务事实源。
-
