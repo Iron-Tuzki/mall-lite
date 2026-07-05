@@ -1,0 +1,5 @@
+{"index":{"_index":"mall_product_basic_v1","_id":"1002"}}
+{"productId":1002,"productName":"机械键盘","productCode":"KEYBOARD-1002","categoryId":20,"price":399.00,"status":"ON_SALE","tags":["外设","键盘"],"description":"支持热插拔的机械键盘","createdAt":"2026-06-22T10:00:00+08:00","brandName":"Mall Lite"}
+{"index":{"_index":"mall_product_basic_v1","_id":"1003"}}
+{"productId":1003,"productName":"无线鼠标","productCode":"MOUSE-1003","categoryId":20,"price":129.00,"status":"ON_SALE","tags":["外设","鼠标"],"description":"轻量无线鼠标","createdAt":"2026-06-22T10:05:00+08:00","brandName":"Mall Lite"}
+

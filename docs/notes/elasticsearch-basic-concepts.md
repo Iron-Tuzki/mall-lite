@@ -135,7 +135,7 @@ Elasticsearch 7.x 的 REST API 统一使用 `_doc`，不再为一个索引设计
 
 ### 1. Cluster 与 Node
 
-**Cluster（集群）**由一个或多个 **Node（节点）**组成。每个节点都是一个 Elasticsearch 进程，可以承担保存数据、协调请求、选举集群管理节点等职责。
+**Cluster（集群）由一个或多个 Node（节点）组成。每个节点都是一个 Elasticsearch 进程，可以承担保存数据、协调请求、选举集群管理节点等职责**。
 
 当前本地学习环境通常只有一个节点。单节点足以完成 REST API 学习，但不能验证真正的节点故障转移。
 

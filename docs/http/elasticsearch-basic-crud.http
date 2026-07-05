@@ -222,17 +222,14 @@ Accept: application/json
 ### 13. Bulk 批量写入两个商品文档
 # Content-Type 必须为 application/x-ndjson。
 # 每个动作行和数据行各占一行，最后一行后必须保留换行。
+# 为避免 .http 请求分隔符吞掉 Bulk body 的末尾换行，这里引用独立的 ndjson 文件。
 # 预期：HTTP 200，顶层 errors=false；仍应检查每个 items 元素。
 # @name bulkCreateProducts
 POST {{esHost}}/_bulk?refresh=wait_for
 Content-Type: application/x-ndjson
 Accept: application/json
 
-{"index":{"_index":"mall_product_basic_v1","_id":"1002"}}
-{"productId":1002,"productName":"机械键盘","productCode":"KEYBOARD-1002","categoryId":20,"price":399.00,"status":"ON_SALE","tags":["外设","键盘"],"description":"支持热插拔的机械键盘","createdAt":"2026-06-22T10:00:00+08:00","brandName":"Mall Lite"}
-{"index":{"_index":"mall_product_basic_v1","_id":"1003"}}
-{"productId":1003,"productName":"无线鼠标","productCode":"MOUSE-1003","categoryId":20,"price":129.00,"status":"ON_SALE","tags":["外设","鼠标"],"description":"轻量无线鼠标","createdAt":"2026-06-22T10:05:00+08:00","brandName":"Mall Lite"}
-
+< ./elasticsearch-basic-crud-bulk-products.ndjson
 ###
 
 ### 14. 查询当前索引中的所有练习文档
