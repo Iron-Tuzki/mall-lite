@@ -1,0 +1,13 @@
+{"index":{"_index":"mall_product_query_v1","_id":"2001"}}
+{"productId":2001,"productName":"三模机械键盘","productCode":"KEYBOARD-2001","categoryId":20,"categoryName":"电脑外设","brandName":"KeyMaster","price":299.00,"sales":860,"stock":120,"status":"ON_SALE","tags":["外设","键盘","热卖"],"description":"支持蓝牙、有线和 2.4G 连接的机械键盘，适合办公和游戏。","createdAt":"2026-06-10T10:00:00+08:00"}
+{"index":{"_index":"mall_product_query_v1","_id":"2002"}}
+{"productId":2002,"productName":"无线静音鼠标","productCode":"MOUSE-2002","categoryId":20,"categoryName":"电脑外设","brandName":"QuietMouse","price":129.00,"sales":1240,"stock":300,"status":"ON_SALE","tags":["外设","鼠标","无线"],"description":"轻量化无线鼠标，静音按键，适合办公室使用。","createdAt":"2026-06-12T09:30:00+08:00"}
+{"index":{"_index":"mall_product_query_v1","_id":"2003"}}
+{"productId":2003,"productName":"电竞有线键盘","productCode":"KEYBOARD-2003","categoryId":20,"categoryName":"电脑外设","brandName":"GamePro","price":499.00,"sales":430,"stock":80,"status":"ON_SALE","tags":["外设","键盘","电竞"],"description":"全键无冲电竞键盘，RGB 背光，适合游戏玩家。","createdAt":"2026-06-15T14:20:00+08:00"}
+{"index":{"_index":"mall_product_query_v1","_id":"2004"}}
+{"productId":2004,"productName":"无线蓝牙耳机","productCode":"EARPHONE-2004","categoryId":30,"categoryName":"数码影音","brandName":"SoundLite","price":399.00,"sales":960,"stock":150,"status":"ON_SALE","tags":["耳机","无线","影音"],"description":"主动降噪无线蓝牙耳机，适合通勤和运动。","createdAt":"2026-06-18T11:15:00+08:00"}
+{"index":{"_index":"mall_product_query_v1","_id":"2005"}}
+{"productId":2005,"productName":"机械键盘清仓款","productCode":"KEYBOARD-2005","categoryId":20,"categoryName":"电脑外设","brandName":"OldKeys","price":89.00,"sales":75,"stock":20,"status":"ON_SALE","tags":["外设","键盘","清仓"],"description":"入门机械键盘，库存清仓处理。","createdAt":"2026-05-25T16:40:00+08:00"}
+{"index":{"_index":"mall_product_query_v1","_id":"2006"}}
+{"productId":2006,"productName":"4K 办公显示器","productCode":"MONITOR-2006","categoryId":20,"categoryName":"电脑外设","brandName":"ViewMax","price":1599.00,"sales":220,"stock":60,"status":"OFF_SALE","tags":["外设","显示器","办公"],"description":"27 英寸 4K 办公显示器，色彩准确，当前暂时下架。","createdAt":"2026-07-02T08:00:00+08:00"}
+
