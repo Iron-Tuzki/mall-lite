@@ -1,0 +1,465 @@
+# Elasticsearch 7.17.23 Aggregations 聚合查询练习
+# 使用方式：在 IntelliJ IDEA 中从上到下逐条点击请求左侧运行按钮。
+# 安全边界：所有写操作只针对 mall_product_agg_v1，不使用通配符删除索引。
+
+@esHost = http://localhost:9200
+@indexName = mall_product_agg_v1
+
+### 1. 查看节点和版本信息
+# 预期：HTTP 200，version.number 为 7.17.23。
+# @name nodeInfo
+GET {{esHost}}/
+Accept: application/json
+
+###
+
+### 2. 清理可能残留的同名练习索引
+# ignore_unavailable=true 允许索引不存在，便于重复从头实验。
+# @name cleanupBeforeStart
+DELETE {{esHost}}/{{indexName}}?ignore_unavailable=true
+Accept: application/json
+
+###
+
+### 3. 创建聚合查询练习索引
+# 聚合字段优先使用 keyword、数值、日期类型。
+# productName 是 text，并带 keyword 子字段，用来演示 text 与 keyword 的区别。
+# @name createAggregationIndex
+PUT {{esHost}}/{{indexName}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "productId": {
+        "type": "long"
+      },
+      "productName": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "productCode": {
+        "type": "keyword"
+      },
+      "categoryId": {
+        "type": "long"
+      },
+      "categoryName": {
+        "type": "keyword"
+      },
+      "brandName": {
+        "type": "keyword"
+      },
+      "price": {
+        "type": "scaled_float",
+        "scaling_factor": 100
+      },
+      "sales": {
+        "type": "integer"
+      },
+      "stock": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "tags": {
+        "type": "keyword"
+      },
+      "createdAt": {
+        "type": "date",
+        "format": "strict_date_optional_time||epoch_millis"
+      }
+    }
+  }
+}
+
+###
+
+### 4. 批量写入聚合练习商品
+# 请求体引用独立 ndjson 文件，确保 Bulk API 最后一行以换行符结束。
+# 预期：HTTP 200，errors=false。
+# @name bulkInitAggregationProducts
+POST {{esHost}}/_bulk?refresh=wait_for
+Content-Type: application/x-ndjson
+Accept: application/json
+
+< ./elasticsearch-aggregations-products.ndjson
+
+###
+
+### 5. terms 聚合：按品牌统计商品数量
+# size=0 表示不返回文档列表，只返回聚合结果。
+# @name termsByBrand
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "by_brand": {
+      "terms": {
+        "field": "brandName",
+        "size": 10
+      }
+    }
+  }
+}
+
+###
+
+### 6. terms 聚合：按分类统计商品数量
+# @name termsByCategory
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "by_category": {
+      "terms": {
+        "field": "categoryName",
+        "size": 10
+      }
+    }
+  }
+}
+
+###
+
+### 7. metric 聚合：价格平均值、最低值、最高值、销量总和
+# @name metricPriceAndSales
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "avg_price": {
+      "avg": {
+        "field": "price"
+      }
+    },
+    "min_price": {
+      "min": {
+        "field": "price"
+      }
+    },
+    "max_price": {
+      "max": {
+        "field": "price"
+      }
+    },
+    "total_sales": {
+      "sum": {
+        "field": "sales"
+      }
+    }
+  }
+}
+
+###
+
+### 8. stats 聚合：一次查看价格统计
+# 返回 count、min、max、avg、sum。
+# @name statsPrice
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "price_stats": {
+      "stats": {
+        "field": "price"
+      }
+    }
+  }
+}
+
+###
+
+### 9. 子聚合：按品牌分组后统计平均价格和销量总和
+# 先按 brandName 分桶，再在每个桶内计算指标。
+# @name subAggByBrand
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "by_brand": {
+      "terms": {
+        "field": "brandName",
+        "size": 10
+      },
+      "aggs": {
+        "avg_price": {
+          "avg": {
+            "field": "price"
+          }
+        },
+        "total_sales": {
+          "sum": {
+            "field": "sales"
+          }
+        }
+      }
+    }
+  }
+}
+
+###
+
+### 10. range 聚合：自定义价格区间统计
+# 适合商城前台价格筛选面板。
+# @name rangePrice
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "price_ranges": {
+      "range": {
+        "field": "price",
+        "ranges": [
+          {
+            "key": "100 元以下",
+            "to": 100
+          },
+          {
+            "key": "100-500 元",
+            "from": 100,
+            "to": 500
+          },
+          {
+            "key": "500 元以上",
+            "from": 500
+          }
+        ]
+      }
+    }
+  }
+}
+
+###
+
+### 11. histogram 聚合：按固定价格间隔分桶
+# interval=500 表示 0-500、500-1000、1000-1500 等固定区间。
+# @name histogramPrice
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "price_histogram": {
+      "histogram": {
+        "field": "price",
+        "interval": 500
+      }
+    }
+  }
+}
+
+###
+
+### 12. date_histogram 聚合：按天统计商品创建数量
+# @name dateHistogramCreatedAt
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "created_by_day": {
+      "date_histogram": {
+        "field": "createdAt",
+        "calendar_interval": "day",
+        "format": "yyyy-MM-dd"
+      }
+    }
+  }
+}
+
+###
+
+### 13. query + aggs：只统计上架商品的品牌分布
+# 聚合范围受 query 影响：先过滤 status=ON_SALE，再按品牌统计。
+# @name queryThenAggs
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "query": {
+    "term": {
+      "status": "ON_SALE"
+    }
+  },
+  "aggs": {
+    "by_brand": {
+      "terms": {
+        "field": "brandName",
+        "size": 10
+      }
+    },
+    "price_stats": {
+      "stats": {
+        "field": "price"
+      }
+    }
+  }
+}
+
+###
+
+### 14. filter 聚合：单独统计上架商品平均价格
+# filter 聚合会生成一个满足条件的桶，再在桶内继续做指标统计。
+# @name filterAggOnSaleAvgPrice
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "on_sale_products": {
+      "filter": {
+        "term": {
+          "status": "ON_SALE"
+        }
+      },
+      "aggs": {
+        "avg_price": {
+          "max": {
+            "field": "price"
+          }
+        }
+      }
+    }
+  }
+}
+
+###
+
+### 15. cardinality 聚合：统计品牌去重数量
+# cardinality 是近似去重，适合大数据量估算。
+# @name cardinalityBrand
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "brand_count": {
+      "cardinality": {
+        "field": "brandName"
+      }
+    }
+  }
+}
+
+###
+
+### 16. 真实搜索页示例：关键词搜索 + 筛选面板聚合
+# 返回商品列表，同时返回当前搜索结果下的品牌、分类和价格区间统计。
+# @name searchPageWithAggs
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "from": 0,
+  "size": 5,
+  "_source": [
+    "productId",
+    "productName",
+    "categoryName",
+    "brandName",
+    "price",
+    "sales"
+  ],
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "productName": "键盘"
+          }
+        }
+      ],
+      "filter": [
+        {
+          "term": {
+            "status": "ON_SALE"
+          }
+        }
+      ]
+    }
+  },
+  "aggs": {
+    "by_brand": {
+      "terms": {
+        "field": "brandName",
+        "size": 10
+      }
+    },
+    "by_category": {
+      "terms": {
+        "field": "categoryName",
+        "size": 10
+      }
+    },
+    "price_ranges": {
+      "range": {
+        "field": "price",
+        "ranges": [
+          {
+            "key": "100 元以下",
+            "to": 100
+          },
+          {
+            "key": "100-500 元",
+            "from": 100,
+            "to": 500
+          },
+          {
+            "key": "500 元以上",
+            "from": 500
+          }
+        ]
+      }
+    }
+  }
+}
+
+###
+
+### 17. 删除本阶段练习索引
+# 如果你还想在 Kibana Discover 或 Dashboard 中查看数据，先不要执行本请求。
+# @name cleanupAfterAggregationsPractice
+DELETE {{esHost}}/{{indexName}}?ignore_unavailable=true
+Accept: application/json

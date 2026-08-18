@@ -1,0 +1,17 @@
+{"index":{"_index":"mall_product_agg_v1","_id":"4001"}}
+{"productId":4001,"productName":"三模机械键盘","productCode":"KEYBOARD-4001","categoryId":20,"categoryName":"电脑外设","brandName":"KeyMaster","price":299.00,"sales":860,"stock":120,"status":"ON_SALE","tags":["外设","键盘","热卖"],"createdAt":"2026-08-01T10:00:00+08:00"}
+{"index":{"_index":"mall_product_agg_v1","_id":"4002"}}
+{"productId":4002,"productName":"电竞有线键盘","productCode":"KEYBOARD-4002","categoryId":20,"categoryName":"电脑外设","brandName":"GamePro","price":499.00,"sales":430,"stock":80,"status":"ON_SALE","tags":["外设","键盘","电竞"],"createdAt":"2026-08-01T14:20:00+08:00"}
+{"index":{"_index":"mall_product_agg_v1","_id":"4003"}}
+{"productId":4003,"productName":"无线静音鼠标","productCode":"MOUSE-4003","categoryId":20,"categoryName":"电脑外设","brandName":"QuietMouse","price":129.00,"sales":1240,"stock":300,"status":"ON_SALE","tags":["外设","鼠标","无线"],"createdAt":"2026-08-02T09:30:00+08:00"}
+{"index":{"_index":"mall_product_agg_v1","_id":"4004"}}
+{"productId":4004,"productName":"无线蓝牙耳机","productCode":"EARPHONE-4004","categoryId":30,"categoryName":"数码影音","brandName":"SoundLite","price":399.00,"sales":960,"stock":150,"status":"ON_SALE","tags":["耳机","无线","影音"],"createdAt":"2026-08-03T11:15:00+08:00"}
+{"index":{"_index":"mall_product_agg_v1","_id":"4005"}}
+{"productId":4005,"productName":"机械键盘清仓款","productCode":"KEYBOARD-4005","categoryId":20,"categoryName":"电脑外设","brandName":"OldKeys","price":89.00,"sales":75,"stock":20,"status":"ON_SALE","tags":["外设","键盘","清仓"],"createdAt":"2026-08-04T16:40:00+08:00"}
+{"index":{"_index":"mall_product_agg_v1","_id":"4006"}}
+{"productId":4006,"productName":"4K 办公显示器","productCode":"MONITOR-4006","categoryId":20,"categoryName":"电脑外设","brandName":"ViewMax","price":1599.00,"sales":220,"stock":60,"status":"OFF_SALE","tags":["外设","显示器","办公"],"createdAt":"2026-08-05T08:00:00+08:00"}
+{"index":{"_index":"mall_product_agg_v1","_id":"4007"}}
+{"productId":4007,"productName":"人体工学办公椅","productCode":"CHAIR-4007","categoryId":40,"categoryName":"办公家具","brandName":"OfficePro","price":699.00,"sales":310,"stock":50,"status":"ON_SALE","tags":["办公","椅子"],"createdAt":"2026-08-06T10:25:00+08:00"}
+{"index":{"_index":"mall_product_agg_v1","_id":"4008"}}
+{"productId":4008,"productName":"KeyMaster 低延迟无线键盘","productCode":"KEYBOARD-4008","categoryId":20,"categoryName":"电脑外设","brandName":"KeyMaster","price":599.00,"sales":510,"stock":70,"status":"ON_SALE","tags":["外设","键盘","无线"],"createdAt":"2026-08-06T15:35:00+08:00"}
+
