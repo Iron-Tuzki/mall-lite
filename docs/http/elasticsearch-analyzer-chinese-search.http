@@ -1,0 +1,320 @@
+# Elasticsearch 7.17.23 分词器、倒排索引与中文搜索练习
+# 使用方式：在 IntelliJ IDEA 中从上到下逐条点击请求左侧运行按钮。
+# 安全边界：所有写操作只针对 mall_product_analyzer_v1，不使用通配符删除索引。
+# 注意：IK 分词器不是 Elasticsearch 默认内置插件，未安装时不要运行 IK 示例请求。
+
+@esHost = http://localhost:9200
+@indexName = mall_product_analyzer_v1
+
+### 1. 查看节点和版本信息
+# 预期：HTTP 200，version.number 为 7.17.23。
+# @name nodeInfo
+GET {{esHost}}/
+Accept: application/json
+
+###
+
+### 2. 查看已安装插件
+# 如果安装了 IK，通常能在返回中看到 analysis-ik。
+# @name listPlugins
+GET {{esHost}}/_cat/plugins?v
+Accept: text/plain
+
+###
+
+### 3. 使用 standard analyzer 分析中文
+# 重点观察 tokens 数组。默认 standard 对中文通常不如中文专用分词器懂业务词语。
+# @name analyzeChineseByStandard
+POST {{esHost}}/_analyze
+Content-Type: application/json
+Accept: application/json
+
+{
+  "analyzer": "standard",
+  "text": "三模机械键盘"
+}
+
+###
+
+### 4. 使用 keyword analyzer 分析中文
+# keyword 会把整段文本作为一个 token，适合编码、状态、完整名称精确匹配。
+# @name analyzeChineseByKeyword
+POST {{esHost}}/_analyze
+Content-Type: application/json
+Accept: application/json
+
+{
+  "analyzer": "keyword",
+  "text": "三模机械键盘"
+}
+
+###
+
+### 5. 使用 whitespace analyzer 分析带空格文本
+# whitespace 只按空白字符切分；如果中文文本没有空格，它不会自动理解中文词语。
+# @name analyzeChineseByWhitespace
+POST {{esHost}}/_analyze
+Content-Type: application/json
+Accept: application/json
+
+{
+  "analyzer": "whitespace",
+  "text": "三模 机械键盘 蓝牙"
+}
+
+###
+
+### 6. 可选：使用 IK 细粒度分词
+# 仅当你已经安装和 ES 7.17.23 兼容的 analysis-ik 插件后再运行。
+# 未安装时会返回 analyzer [ik_max_word] has not been configured。
+# @name analyzeChineseByIkMaxWord
+POST {{esHost}}/_analyze
+Content-Type: application/json
+Accept: application/json
+
+{
+  "analyzer": "ik_max_word",
+  "text": "三模机械键盘"
+}
+
+###
+
+### 7. 可选：使用 IK 智能分词
+# 仅当你已经安装和 ES 7.17.23 兼容的 analysis-ik 插件后再运行。
+# @name analyzeChineseByIkSmart
+POST {{esHost}}/_analyze
+Content-Type: application/json
+Accept: application/json
+
+{
+  "analyzer": "ik_smart",
+  "text": "三模机械键盘"
+}
+
+###
+
+### 8. 清理可能残留的同名练习索引
+# ignore_unavailable=true 允许索引不存在，便于重复从头实验。
+# @name cleanupBeforeStart
+DELETE {{esHost}}/{{indexName}}?ignore_unavailable=true
+Accept: application/json
+
+###
+
+### 9. 创建分词器练习索引
+# productName 使用 standard analyzer，并提供 keyword 和 whitespace 两个子字段。
+# productName.keyword：完整值精确匹配。
+# productName.whitespace：演示按空格切分的效果。
+# @name createAnalyzerIndex
+PUT {{esHost}}/{{indexName}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "productId": {
+        "type": "long"
+      },
+      "productName": {
+        "type": "text",
+        "analyzer": "standard",
+        "search_analyzer": "standard",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          },
+          "whitespace": {
+            "type": "text",
+            "analyzer": "whitespace",
+            "search_analyzer": "whitespace"
+          }
+        }
+      },
+      "productCode": {
+        "type": "keyword"
+      },
+      "brandName": {
+        "type": "keyword"
+      },
+      "price": {
+        "type": "scaled_float",
+        "scaling_factor": 100
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "description": {
+        "type": "text",
+        "analyzer": "standard",
+        "search_analyzer": "standard"
+      },
+      "createdAt": {
+        "type": "date",
+        "format": "strict_date_optional_time||epoch_millis"
+      }
+    }
+  }
+}
+
+###
+
+### 10. 批量写入分词器练习商品
+# 请求体引用独立 ndjson 文件，确保 Bulk API 最后一行以换行符结束。
+# @name bulkInitAnalyzerProducts
+POST {{esHost}}/_bulk?refresh=wait_for
+Content-Type: application/x-ndjson
+Accept: application/json
+
+< ./elasticsearch-analyzer-products.ndjson
+
+###
+
+### 11. 查看索引 Mapping
+# 重点观察 productName、productName.keyword、productName.whitespace。
+# @name getAnalyzerMapping
+GET {{esHost}}/{{indexName}}/_mapping
+Accept: application/json
+
+###
+
+### 12. match 查询 text 字段
+# match 会分析查询文本，再去倒排索引中匹配 token。
+# @name matchProductName
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "_source": [
+    "productId",
+    "productName"
+  ],
+  "query": {
+    "match": {
+      "productName": "机械键盘"
+    }
+  }
+}
+
+###
+
+### 13. term 查询 text 字段
+# term 不分析查询文本。如果倒排索引里没有完整 token“机械键盘”，可能查不到。
+# @name termProductNameText
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "_source": [
+    "productId",
+    "productName"
+  ],
+  "query": {
+    "term": {
+      "productName": "机械键盘"
+    }
+  }
+}
+
+###
+
+### 14. term 查询 keyword 子字段
+# productName.keyword 不分词，适合完整商品名精确匹配。
+# @name termProductNameKeyword
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "_source": [
+    "productId",
+    "productName"
+  ],
+  "query": {
+    "term": {
+      "productName.keyword": "三模机械键盘"
+    }
+  }
+}
+
+###
+
+### 15. match 查询 whitespace 子字段
+# productName.whitespace 按空格切分。只有写入内容中带空格的商品更容易按词命中。
+# @name matchProductNameWhitespace
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "_source": [
+    "productId",
+    "productName"
+  ],
+  "query": {
+    "match": {
+      "productName.whitespace": "机械键盘"
+    }
+  }
+}
+
+###
+
+### 16. multi_match：商品名权重高，品牌次之，描述最低
+# 权重由 ^数字 决定，不由 fields 数组顺序决定。
+# @name multiMatchWeighted
+GET {{esHost}}/{{indexName}}/_search
+Content-Type: application/json
+Accept: application/json
+
+{
+  "_source": [
+    "productId",
+    "productName",
+    "brandName",
+    "description"
+  ],
+  "query": {
+    "multi_match": {
+      "query": "无线键盘",
+      "fields": [
+        "productName^3",
+        "brandName^2",
+        "description"
+      ]
+    }
+  }
+}
+
+###
+
+### 17. explain：查看某个文档为什么命中
+# 用于学习相关性评分细节；生产线上不要对大量文档滥用。
+# @name explainProduct3001
+GET {{esHost}}/{{indexName}}/_explain/3001
+Content-Type: application/json
+Accept: application/json
+
+{
+  "query": {
+    "match": {
+      "productName": "机械键盘"
+    }
+  }
+}
+
+###
+
+### 18. 删除本阶段练习索引
+# 如果你还想在 Kibana Discover 中查看数据，先不要执行本请求。
+# @name cleanupAfterAnalyzerPractice
+DELETE {{esHost}}/{{indexName}}?ignore_unavailable=true
+Accept: application/json

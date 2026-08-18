@@ -1,0 +1,9 @@
+{"index":{"_index":"mall_product_analyzer_v1","_id":"3001"}}
+{"productId":3001,"productName":"三模机械键盘","productCode":"KEYBOARD-3001","brandName":"KeyMaster","price":299.00,"status":"ON_SALE","description":"支持蓝牙、有线和 2.4G 的机械键盘，适合办公和游戏。","createdAt":"2026-08-01T10:00:00+08:00"}
+{"index":{"_index":"mall_product_analyzer_v1","_id":"3002"}}
+{"productId":3002,"productName":"三模 机械键盘","productCode":"KEYBOARD-3002","brandName":"KeyMaster","price":329.00,"status":"ON_SALE","description":"名称中人为加入空格，便于观察 whitespace analyzer 的分词效果。","createdAt":"2026-08-02T10:00:00+08:00"}
+{"index":{"_index":"mall_product_analyzer_v1","_id":"3003"}}
+{"productId":3003,"productName":"无线蓝牙耳机","productCode":"EARPHONE-3003","brandName":"SoundLite","price":399.00,"status":"ON_SALE","description":"主动降噪无线蓝牙耳机，适合通勤和运动。","createdAt":"2026-08-03T10:00:00+08:00"}
+{"index":{"_index":"mall_product_analyzer_v1","_id":"3004"}}
+{"productId":3004,"productName":"无线办公键盘","productCode":"KEYBOARD-3004","brandName":"OfficePro","price":199.00,"status":"ON_SALE","description":"轻薄无线键盘，适合办公室长时间输入。","createdAt":"2026-08-04T10:00:00+08:00"}
+
