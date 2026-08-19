@@ -1,0 +1,41 @@
+# Spring Boot 商品搜索接口练习
+# 使用前提：
+# 1. 本地 Elasticsearch 已启动：http://localhost:9200
+# 2. 先执行 docs/http/elasticsearch-aggregations-basic.http 中第 2-4 步，创建并写入 mall_product_agg_v1
+# 3. 启动 mall-app 后再执行本文件请求
+
+@appHost = http://localhost:8080
+
+### 1. 搜索键盘商品
+# @name searchKeyboard
+GET {{appHost}}/api/products/search?keyword=键盘&pageNo=1&pageSize=10
+Accept: application/json
+
+###
+
+### 2. 搜索电脑外设分类下的键盘
+# categoryId=20 对应阶段 4 练习数据中的电脑外设。
+# @name searchKeyboardByCategory
+GET {{appHost}}/api/products/search?keyword=键盘&categoryId=20&pageNo=1&pageSize=10
+Accept: application/json
+
+###
+
+### 3. 搜索指定品牌
+# @name searchByBrand
+GET {{appHost}}/api/products/search?keyword=键盘&brandName=KeyMaster&pageNo=1&pageSize=10
+Accept: application/json
+
+###
+
+### 4. 搜索价格区间
+# @name searchByPriceRange
+GET {{appHost}}/api/products/search?keyword=键盘&minPrice=100&maxPrice=800&pageNo=1&pageSize=10
+Accept: application/json
+
+###
+
+### 5. 不传关键词，只查询上架商品并返回聚合
+# @name searchWithoutKeyword
+GET {{appHost}}/api/products/search?pageNo=1&pageSize=5
+Accept: application/json

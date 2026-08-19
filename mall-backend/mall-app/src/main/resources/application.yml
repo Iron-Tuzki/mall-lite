@@ -163,3 +163,9 @@ mall:
       failed-queue: mall.cart.failed.queue
       failed-routing-key: mall.cart.failed.routing-key
       confirm-timeout-seconds: 3
+  elasticsearch:
+    uris:
+      - http://localhost:9200
+    product-index: mall_product_agg_v1
+    connect-timeout-millis: 3000
+    socket-timeout-millis: 5000
