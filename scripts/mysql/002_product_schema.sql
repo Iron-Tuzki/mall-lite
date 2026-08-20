@@ -30,6 +30,7 @@ CREATE TABLE pms_product
     category_id    BIGINT UNSIGNED NOT NULL COMMENT '分类ID',
     product_code   VARCHAR(64)     NOT NULL COMMENT '商品编码',
     name           VARCHAR(128)    NOT NULL COMMENT '商品名称',
+    brand_name     VARCHAR(64)     NULL COMMENT '品牌名称',
     subtitle       VARCHAR(255)    NULL COMMENT '商品副标题',
     main_image_url VARCHAR(255)    NULL COMMENT '商品主图',
     description    TEXT            NULL COMMENT '商品描述',

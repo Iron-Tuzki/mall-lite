@@ -220,6 +220,7 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
   return {
     id: product.id,
     name: product.name,
+    brandName: product.brandName,
     subtitle: product.subtitle || '精选好物',
     price: product.minPrice ?? 0,
     buyers: (product.id % 90) + 10,
@@ -232,6 +233,7 @@ function toHotProductCard(product: ProductSummary, index: number): ProductCardDa
   return {
     id: product.id,
     name: product.name,
+    brandName: product.brandName,
     subtitle: product.subtitle || '正在热卖',
     price: product.minPrice ?? 0,
     buyers: (product.id % 90) + 10,

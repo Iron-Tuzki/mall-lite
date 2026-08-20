@@ -108,6 +108,9 @@ async function showProductDetail(row: AdminProduct) {
       <el-table v-loading="loading" :data="products" row-key="id" @row-dblclick="showProductDetail">
         <el-table-column prop="id" label="ID" width="100" />
         <el-table-column prop="productCode" label="商品编码" min-width="150" />
+        <el-table-column prop="brandName" label="品牌" min-width="130">
+          <template #default="{ row }">{{ row.brandName || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="name" label="商品名称" min-width="180" />
         <el-table-column prop="sort" label="排序" width="90" />
         <el-table-column label="状态" width="100">
@@ -147,6 +150,7 @@ async function showProductDetail(row: AdminProduct) {
             </el-descriptions-item>
             <el-descriptions-item label="商品编码">{{ productDetail.productCode }}</el-descriptions-item>
             <el-descriptions-item label="分类 ID">{{ productDetail.categoryId }}</el-descriptions-item>
+            <el-descriptions-item label="品牌">{{ productDetail.brandName || '-' }}</el-descriptions-item>
             <el-descriptions-item label="商品名称">{{ productDetail.name }}</el-descriptions-item>
             <el-descriptions-item label="排序">{{ productDetail.sort }}</el-descriptions-item>
             <el-descriptions-item label="副标题" :span="2">{{ productDetail.subtitle || '-' }}</el-descriptions-item>

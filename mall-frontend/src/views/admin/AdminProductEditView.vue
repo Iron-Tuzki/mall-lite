@@ -25,6 +25,7 @@ const form = reactive<AdminProductRequest>({
   categoryId: null,
   productCode: '',
   name: '',
+  brandName: '',
   subtitle: '',
   mainImageUrl: '',
   description: '',
@@ -61,6 +62,7 @@ async function loadProduct() {
       categoryId: product.categoryId,
       productCode: product.productCode,
       name: product.name,
+      brandName: product.brandName || '',
       subtitle: product.subtitle || '',
       mainImageUrl: product.mainImageUrl || '',
       description: product.description || '',
@@ -162,6 +164,7 @@ async function saveProduct() {
         </el-form-item>
         <el-form-item label="商品编码"><el-input v-model="form.productCode" /></el-form-item>
         <el-form-item label="商品名称"><el-input v-model="form.name" /></el-form-item>
+        <el-form-item label="品牌名称"><el-input v-model="form.brandName" /></el-form-item>
         <el-form-item label="副标题"><el-input v-model="form.subtitle" /></el-form-item>
         <el-form-item label="主图"><el-input v-model="form.mainImageUrl" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="4" /></el-form-item>

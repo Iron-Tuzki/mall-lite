@@ -10,6 +10,7 @@ export interface ProductSummary {
   categoryId: number;
   productCode: string;
   name: string;
+  brandName: string | null;
   subtitle: string;
   mainImageUrl: string;
   minPrice: number | null;

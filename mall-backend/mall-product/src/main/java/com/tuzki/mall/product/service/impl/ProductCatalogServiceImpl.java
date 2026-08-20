@@ -261,6 +261,7 @@ public class ProductCatalogServiceImpl implements ProductCatalogService {
         productSummaryVO.setCategoryId(product.getCategoryId());
         productSummaryVO.setProductCode(product.getProductCode());
         productSummaryVO.setName(product.getName());
+        productSummaryVO.setBrandName(product.getBrandName());
         productSummaryVO.setSubtitle(product.getSubtitle());
         productSummaryVO.setMainImageUrl(product.getMainImageUrl());
         productSummaryVO.setMinPrice(findMinSkuPrice(product.getId()));

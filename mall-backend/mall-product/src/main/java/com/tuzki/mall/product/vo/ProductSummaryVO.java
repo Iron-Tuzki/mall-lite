@@ -15,6 +15,8 @@ public class ProductSummaryVO {
 
     private String name;
 
+    private String brandName;
+
     private String subtitle;
 
     private String mainImageUrl;
@@ -51,6 +53,14 @@ public class ProductSummaryVO {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getBrandName() {
+        return brandName;
+    }
+
+    public void setBrandName(String brandName) {
+        this.brandName = brandName;
     }
 
     public String getSubtitle() {

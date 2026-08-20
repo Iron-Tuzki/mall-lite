@@ -5,6 +5,7 @@ import { computed } from 'vue';
 export interface ProductCardData {
   id: number;
   name: string;
+  brandName?: string | null;
   subtitle: string;
   price: number;
   buyers: number;
@@ -49,6 +50,7 @@ function handleFavoriteClick(event: MouseEvent) {
         </el-icon>
       </button>
     </div>
+    <span v-if="product.brandName" class="brand-name">{{ product.brandName }}</span>
     <h3>{{ product.name }}</h3>
     <p>{{ product.subtitle }}</p>
     <div class="meta-row">
@@ -120,7 +122,7 @@ function handleFavoriteClick(event: MouseEvent) {
 h3 {
   display: -webkit-box;
   min-height: 44px;
-  margin: 10px 0 4px;
+  margin: 4px 0;
   overflow: hidden;
   color: #222;
   font-size: 15px;
@@ -128,6 +130,18 @@ h3 {
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.brand-name {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 10px;
+  overflow: hidden;
+  color: #8a5a2b;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 p {

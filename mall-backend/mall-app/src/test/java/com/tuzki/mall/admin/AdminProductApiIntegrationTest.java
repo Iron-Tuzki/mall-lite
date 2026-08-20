@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,12 +38,16 @@ class AdminProductApiIntegrationTest {
     @Autowired
     private InventoryMapper inventoryMapper;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @Test
     void createProductCreatesSkuAndInventoryInOneRequest() throws Exception {
         long suffix = System.nanoTime();
         Long categoryId = insertCategory("Admin Product Category " + suffix);
         String productCode = "ADM-P" + suffix;
         String skuCode = "ADM-S" + suffix;
+        String brandName = "Admin Brand " + suffix;
 
         mockMvc.perform(post("/api/admin/products")
                         .contentType("application/json")
@@ -51,6 +56,7 @@ class AdminProductApiIntegrationTest {
                                   "categoryId": %d,
                                   "productCode": "%s",
                                   "name": "Admin Product %d",
+                                  "brandName": "%s",
                                   "subtitle": "Admin product subtitle",
                                   "mainImageUrl": "/images/admin-product.png",
                                   "description": "Admin product description",
@@ -69,10 +75,11 @@ class AdminProductApiIntegrationTest {
                                     }
                                   ]
                                 }
-                                """.formatted(categoryId, productCode, suffix, skuCode)))
+                                """.formatted(categoryId, productCode, suffix, brandName, skuCode)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.productCode").value(productCode))
+                .andExpect(jsonPath("$.data.brandName").value(brandName))
                 .andExpect(jsonPath("$.data.skus[0].skuCode").value(skuCode))
                 .andExpect(jsonPath("$.data.skus[0].availableStock").value(50))
                 .andExpect(jsonPath("$.data.skus[0].lockedStock").value(0));
@@ -85,6 +92,10 @@ class AdminProductApiIntegrationTest {
         assertNotNull(inventory);
         assertEquals(50, inventory.getAvailableStock());
         assertEquals(0, inventory.getLockedStock());
+        assertEquals(brandName, jdbcTemplate.queryForObject(
+                "SELECT brand_name FROM pms_product WHERE product_code = ?",
+                String.class,
+                productCode));
     }
 
     private Long insertCategory(String name) {

@@ -22,6 +22,8 @@ public class AdminProductRequest {
     @NotBlank(message = "name must not be blank")
     private String name;
 
+    private String brandName;
+
     private String subtitle;
 
     private String mainImageUrl;
@@ -61,6 +63,14 @@ public class AdminProductRequest {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getBrandName() {
+        return brandName;
+    }
+
+    public void setBrandName(String brandName) {
+        this.brandName = brandName;
     }
 
     public String getSubtitle() {

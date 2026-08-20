@@ -32,12 +32,13 @@ ON DUPLICATE KEY UPDATE
     status = VALUES(status),
     deleted = VALUES(deleted);
 
-INSERT INTO pms_product (id, category_id, product_code, name, subtitle, main_image_url, description, status, sort, deleted)
-VALUES (900001, 900001, 'SEED-P-001', 'Seed Test Product', 'Seed product for integration tests',
+INSERT INTO pms_product (id, category_id, product_code, name, brand_name, subtitle, main_image_url, description, status, sort, deleted)
+VALUES (900001, 900001, 'SEED-P-001', 'Seed Test Product', 'Seed Brand', 'Seed product for integration tests',
         'https://example.com/seed-product.png', 'Seed product used by mall-lite tests.', 1, 1, 0)
 ON DUPLICATE KEY UPDATE
     category_id = VALUES(category_id),
     name = VALUES(name),
+    brand_name = VALUES(brand_name),
     subtitle = VALUES(subtitle),
     main_image_url = VALUES(main_image_url),
     description = VALUES(description),

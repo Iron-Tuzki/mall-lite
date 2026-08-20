@@ -83,6 +83,7 @@ function toProductCard(product: ProductSummary, index: number): ProductCardData 
   return {
     id: product.id,
     name: product.name,
+    brandName: product.brandName,
     subtitle: product.subtitle || '正在热卖',
     price: product.minPrice ?? 0,
     buyers: (product.id % 90) + 10,

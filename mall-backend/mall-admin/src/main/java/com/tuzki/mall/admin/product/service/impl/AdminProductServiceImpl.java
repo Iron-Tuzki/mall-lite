@@ -213,6 +213,7 @@ public class AdminProductServiceImpl implements AdminProductService {
         product.setCategoryId(request.getCategoryId());
         product.setProductCode(request.getProductCode());
         product.setName(request.getName());
+        product.setBrandName(request.getBrandName());
         product.setSubtitle(request.getSubtitle());
         product.setMainImageUrl(request.getMainImageUrl());
         product.setDescription(request.getDescription());
@@ -362,6 +363,7 @@ public class AdminProductServiceImpl implements AdminProductService {
         productVO.setCategoryId(product.getCategoryId());
         productVO.setProductCode(product.getProductCode());
         productVO.setName(product.getName());
+        productVO.setBrandName(product.getBrandName());
         productVO.setSubtitle(product.getSubtitle());
         productVO.setMainImageUrl(product.getMainImageUrl());
         productVO.setDescription(product.getDescription());

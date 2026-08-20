@@ -168,6 +168,7 @@ function buyNow() {
             {{ favorited ? '已收藏' : '收藏商品' }}
           </el-button>
           <h1>{{ product?.name || '商品详情' }}</h1>
+          <p v-if="product?.brandName" class="brand-name">品牌：{{ product.brandName }}</p>
           <p class="subtitle">{{ product?.description || product?.subtitle || '商品详情正在加载中' }}</p>
 
           <div class="price-box">
@@ -250,6 +251,12 @@ function buyNow() {
 .subtitle {
   color: #666;
   line-height: 1.7;
+}
+
+.brand-name {
+  margin: -2px 0 10px;
+  color: #8a5a2b;
+  font-weight: 800;
 }
 
 .price-box {

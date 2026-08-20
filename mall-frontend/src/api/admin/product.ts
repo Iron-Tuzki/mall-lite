@@ -22,6 +22,7 @@ export interface AdminProduct {
   categoryId: number;
   productCode: string;
   name: string;
+  brandName?: string | null;
   subtitle?: string;
   mainImageUrl?: string;
   description?: string;
@@ -34,6 +35,7 @@ export interface AdminProductRequest {
   categoryId: number | null;
   productCode: string;
   name: string;
+  brandName?: string | null;
   subtitle?: string;
   mainImageUrl?: string;
   description?: string;
