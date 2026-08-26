@@ -3,6 +3,7 @@ package com.tuzki.mall.admin.product.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tuzki.mall.admin.product.dto.AdminProductRequest;
 import com.tuzki.mall.admin.product.dto.AdminProductSkuRequest;
+import com.tuzki.mall.admin.product.search.ProductSearchIndexSynchronizationService;
 import com.tuzki.mall.admin.product.service.AdminProductService;
 import com.tuzki.mall.admin.product.service.ProductCacheInvalidationService;
 import com.tuzki.mall.admin.product.vo.AdminProductSkuVO;
@@ -53,16 +54,20 @@ public class AdminProductServiceImpl implements AdminProductService {
 
     private final ProductCacheInvalidationService productCacheInvalidationService;
 
+    private final ProductSearchIndexSynchronizationService productSearchIndexSynchronizationService;
+
     public AdminProductServiceImpl(ProductMapper productMapper,
                                    SkuMapper skuMapper,
                                    CategoryMapper categoryMapper,
                                    InventoryMapper inventoryMapper,
-                                   ProductCacheInvalidationService productCacheInvalidationService) {
+                                   ProductCacheInvalidationService productCacheInvalidationService,
+                                   ProductSearchIndexSynchronizationService productSearchIndexSynchronizationService) {
         this.productMapper = productMapper;
         this.skuMapper = skuMapper;
         this.categoryMapper = categoryMapper;
         this.inventoryMapper = inventoryMapper;
         this.productCacheInvalidationService = productCacheInvalidationService;
+        this.productSearchIndexSynchronizationService = productSearchIndexSynchronizationService;
     }
 
     @Override
@@ -106,6 +111,7 @@ public class AdminProductServiceImpl implements AdminProductService {
         for (AdminProductSkuRequest skuRequest : request.getSkus()) {
             createSkuAndInventory(product.getId(), skuRequest);
         }
+        productSearchIndexSynchronizationService.syncProductAfterCommit(product.getId());
         return getProduct(product.getId());
     }
 
@@ -133,6 +139,7 @@ public class AdminProductServiceImpl implements AdminProductService {
         // 软删除前台未传入到后台的skuid
         softDeleteRemovedSkus(productId, retainedSkuIds);
         productCacheInvalidationService.invalidateProductDetailAfterCommit(productId);
+        productSearchIndexSynchronizationService.syncProductAfterCommit(productId);
         return getProduct(productId);
     }
 
@@ -150,6 +157,7 @@ public class AdminProductServiceImpl implements AdminProductService {
             softDeleteInventory(sku.getId());
         }
         productCacheInvalidationService.invalidateProductDetailAfterCommit(productId);
+        productSearchIndexSynchronizationService.deleteProductAfterCommit(productId);
     }
 
     @Override
@@ -159,6 +167,7 @@ public class AdminProductServiceImpl implements AdminProductService {
         product.setStatus(status);
         productMapper.updateById(product);
         productCacheInvalidationService.invalidateProductDetailAfterCommit(productId);
+        productSearchIndexSynchronizationService.syncProductAfterCommit(productId);
         return getProduct(productId);
     }
 

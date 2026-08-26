@@ -3,6 +3,7 @@ package com.tuzki.mall.admin;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.tuzki.mall.inventory.entity.Inventory;
 import com.tuzki.mall.inventory.mapper.InventoryMapper;
+import com.tuzki.mall.admin.product.search.ProductSearchIndexSynchronizationService;
 import com.tuzki.mall.product.entity.Category;
 import com.tuzki.mall.product.entity.Sku;
 import com.tuzki.mall.product.mapper.CategoryMapper;
@@ -12,11 +13,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -40,6 +43,9 @@ class AdminProductApiIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @MockitoBean
+    private ProductSearchIndexSynchronizationService productSearchIndexSynchronizationService;
 
     @Test
     void createProductCreatesSkuAndInventoryInOneRequest() throws Exception {
@@ -96,6 +102,11 @@ class AdminProductApiIntegrationTest {
                 "SELECT brand_name FROM pms_product WHERE product_code = ?",
                 String.class,
                 productCode));
+        Long productId = jdbcTemplate.queryForObject(
+                "SELECT id FROM pms_product WHERE product_code = ?",
+                Long.class,
+                productCode);
+        verify(productSearchIndexSynchronizationService).syncProductAfterCommit(productId);
     }
 
     private Long insertCategory(String name) {

@@ -13,7 +13,7 @@ public class ElasticsearchProperties {
 
     private List<String> uris = new ArrayList<>(List.of("http://localhost:9200"));
 
-    private String productIndex = "mall_product_agg_v1";
+    private String productIndex = "mall_product_search_v1";
 
     private int connectTimeoutMillis = 3000;
 

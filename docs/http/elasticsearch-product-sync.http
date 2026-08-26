@@ -1,0 +1,73 @@
+# 商品数据同步到 Elasticsearch：后台同步接口与验证脚本
+#
+# 前置条件：
+# 1. Elasticsearch 已启动：http://localhost:9200
+# 2. 后端应用已启动：http://localhost:8080
+# 3. MySQL 中已有商品、SKU、库存数据
+#
+# 安全边界：
+# - 本文件只读取或写入固定索引 mall_product_search_v1。
+# - 不包含通配符删除索引操作。
+
+@backend = http://localhost:8080
+@es = http://localhost:9200
+@indexName = mall_product_search_v1
+@productId = 1001
+
+### 1. 全量重建商品搜索索引：把 MySQL 当前未删除商品批量同步到 ES
+POST {{backend}}/api/admin/products/search-index/rebuild
+
+### 2. 单商品同步：根据 MySQL 最新数据刷新一个商品文档
+POST {{backend}}/api/admin/products/search-index/{{productId}}/sync
+
+### 3. 查看索引 Mapping
+GET {{es}}/{{indexName}}/_mapping
+
+### 4. 查看索引中的前 10 条商品文档
+GET {{es}}/{{indexName}}/_search
+Content-Type: application/json
+
+{
+  "size": 10,
+  "query": {
+    "match_all": {}
+  },
+  "sort": [
+    {
+      "productId": "asc"
+    }
+  ]
+}
+
+### 5. 按商品名称 / 描述搜索
+GET {{es}}/{{indexName}}/_search
+Content-Type: application/json
+
+{
+  "query": {
+    "multi_match": {
+      "query": "无线 外设",
+      "fields": [
+        "productName^3",
+        "brandName",
+        "description"
+      ]
+    }
+  }
+}
+
+### 6. 按品牌聚合
+GET {{es}}/{{indexName}}/_search
+Content-Type: application/json
+
+{
+  "size": 0,
+  "aggs": {
+    "brands": {
+      "terms": {
+        "field": "brandName",
+        "size": 10
+      }
+    }
+  }
+}

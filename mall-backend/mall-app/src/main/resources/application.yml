@@ -166,6 +166,6 @@ mall:
   elasticsearch:
     uris:
       - http://localhost:9200
-    product-index: mall_product_agg_v1
+    product-index: mall_product_search_v1
     connect-timeout-millis: 3000
     socket-timeout-millis: 5000
