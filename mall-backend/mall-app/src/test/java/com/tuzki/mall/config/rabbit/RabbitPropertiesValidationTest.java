@@ -92,6 +92,26 @@ class RabbitPropertiesValidationTest {
     }
 
     @Test
+    void productSearchIndexRabbitPropertiesRejectBlankEventExchange() {
+        ProductSearchIndexRabbitProperties properties = new ProductSearchIndexRabbitProperties();
+        properties.setEventExchange(" ");
+
+        assertThatThrownBy(properties::validate)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("商品搜索索引事件交换机不能为空");
+    }
+
+    @Test
+    void productSearchIndexRabbitPropertiesRejectInvalidConfirmTimeout() {
+        ProductSearchIndexRabbitProperties properties = new ProductSearchIndexRabbitProperties();
+        properties.setConfirmTimeoutSeconds(null);
+
+        assertThatThrownBy(properties::validate)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("商品搜索索引消息 Confirm 超时时间必须大于 0");
+    }
+
+    @Test
     void productHotPropertiesRejectBucketTtlShorterThanWindow() {
         ProductHotProperties properties = new ProductHotProperties();
         properties.setWindowHours(24);
@@ -108,6 +128,7 @@ class RabbitPropertiesValidationTest {
         assertThatCode(new CouponRewardRabbitProperties()::validate).doesNotThrowAnyException();
         assertThatCode(new OrderRabbitProperties()::validate).doesNotThrowAnyException();
         assertThatCode(new ProductHotRabbitProperties()::validate).doesNotThrowAnyException();
+        assertThatCode(new ProductSearchIndexRabbitProperties()::validate).doesNotThrowAnyException();
         assertThatCode(new ProductHotProperties()::validate).doesNotThrowAnyException();
     }
 }

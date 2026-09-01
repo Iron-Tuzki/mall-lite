@@ -3,63 +3,40 @@ package com.tuzki.mall.admin.product.search;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
- * 商品搜索索引同步协调服务，负责在商品写入事务提交后触发 Elasticsearch 同步。
+ * 商品搜索索引同步协调服务，负责把商品写库事务中的索引变更转换为 Outbox 异步事件。
  */
 @Service
 public class ProductSearchIndexSynchronizationService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ProductSearchIndexSynchronizationService.class);
 
-    private final ProductSearchIndexService productSearchIndexService;
+    private final ProductSearchIndexEventSender productSearchIndexEventSender;
 
-    public ProductSearchIndexSynchronizationService(ProductSearchIndexService productSearchIndexService) {
-        this.productSearchIndexService = productSearchIndexService;
+    public ProductSearchIndexSynchronizationService(ProductSearchIndexEventSender productSearchIndexEventSender) {
+        this.productSearchIndexEventSender = productSearchIndexEventSender;
     }
 
     public void syncProductAfterCommit(Long productId) {
         if (productId == null) {
             return;
         }
-        runAfterCommit(() -> syncProduct(productId));
+        sendEvent(productId, ProductSearchIndexChangedEventType.SYNC);
     }
 
     public void deleteProductAfterCommit(Long productId) {
         if (productId == null) {
             return;
         }
-        runAfterCommit(() -> deleteProduct(productId));
+        sendEvent(productId, ProductSearchIndexChangedEventType.DELETE);
     }
 
-    private void syncProduct(Long productId) {
+    private void sendEvent(Long productId, ProductSearchIndexChangedEventType eventType) {
         try {
-            productSearchIndexService.syncProduct(productId);
+            productSearchIndexEventSender.send(new ProductSearchIndexChangedEvent(productId, eventType));
         } catch (RuntimeException exception) {
-            LOGGER.warn("sync product search index failed, productId={}", productId, exception);
+            LOGGER.warn("send product search index event failed, productId={}, eventType={}", productId, eventType, exception);
         }
-    }
-
-    private void deleteProduct(Long productId) {
-        try {
-            productSearchIndexService.deleteProduct(productId);
-        } catch (RuntimeException exception) {
-            LOGGER.warn("delete product search index failed, productId={}", productId, exception);
-        }
-    }
-
-    private void runAfterCommit(Runnable action) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            action.run();
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                action.run();
-            }
-        });
     }
 }
