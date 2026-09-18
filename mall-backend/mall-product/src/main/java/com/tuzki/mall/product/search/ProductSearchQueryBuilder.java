@@ -22,6 +22,16 @@ public class ProductSearchQueryBuilder {
 
     private static final String ON_SALE_STATUS = "ON_SALE";
 
+    private static final String SORT_BY_RELEVANCE = "relevance";
+
+    private static final String SORT_BY_SALES = "sales";
+
+    private static final String SORT_BY_PRICE = "price";
+
+    private static final String SORT_ORDER_ASC = "asc";
+
+    private static final String SORT_ORDER_DESC = "desc";
+
     private final ObjectMapper objectMapper;
 
     public ProductSearchQueryBuilder(ObjectMapper objectMapper) {
@@ -38,7 +48,8 @@ public class ProductSearchQueryBuilder {
         addSourceFields(root);
         addQuery(root, safeRequest);
         addAggregations(root);
-        addSort(root);
+        addSort(root, safeRequest);
+        addHighlight(root, safeRequest);
         return toJson(root);
     }
 
@@ -103,11 +114,59 @@ public class ProductSearchQueryBuilder {
         ranges.addObject().put("key", "500 元以上").put("from", 500);
     }
 
-    private void addSort(ObjectNode root) {
+    private void addSort(ObjectNode root, ProductSearchRequest request) {
         ArrayNode sort = root.putArray("sort");
+        String sortBy = normalizeSortBy(request.getSortBy());
+        String sortOrder = normalizeSortOrder(request.getSortOrder());
+        if (SORT_BY_PRICE.equals(sortBy) || SORT_BY_SALES.equals(sortBy)) {
+            sort.addObject().putObject(sortBy).put("order", sortOrder);
+            sort.addObject().put("_score", SORT_ORDER_DESC);
+            return;
+        }
         sort.addObject().put("_score", "desc");
-        sort.addObject().put("sales", "desc");
-        sort.addObject().put("price", "asc");
+        sort.addObject().putObject("sales").put("order", SORT_ORDER_DESC);
+        sort.addObject().putObject("price").put("order", SORT_ORDER_ASC);
+    }
+
+    private void addHighlight(ObjectNode root, ProductSearchRequest request) {
+        if (!StringUtils.hasText(request.getKeyword())) {
+            return;
+        }
+        ObjectNode highlight = root.putObject("highlight");
+        highlight.putArray("pre_tags").add("<em>");
+        highlight.putArray("post_tags").add("</em>");
+        ObjectNode fields = highlight.putObject("fields");
+        addHighlightField(fields, "productName");
+        addHighlightField(fields, "brandName");
+        addHighlightField(fields, "description");
+    }
+
+    private void addHighlightField(ObjectNode fields, String fieldName) {
+        fields.putObject(fieldName)
+                .put("fragment_size", 150)
+                .put("number_of_fragments", 1);
+    }
+
+    private String normalizeSortBy(String sortBy) {
+        if (!StringUtils.hasText(sortBy)) {
+            return SORT_BY_RELEVANCE;
+        }
+        String normalized = sortBy.trim();
+        if (SORT_BY_PRICE.equals(normalized) || SORT_BY_SALES.equals(normalized)) {
+            return normalized;
+        }
+        return SORT_BY_RELEVANCE;
+    }
+
+    private String normalizeSortOrder(String sortOrder) {
+        if (!StringUtils.hasText(sortOrder)) {
+            return SORT_ORDER_DESC;
+        }
+        String normalized = sortOrder.trim().toLowerCase();
+        if (SORT_ORDER_ASC.equals(normalized)) {
+            return SORT_ORDER_ASC;
+        }
+        return SORT_ORDER_DESC;
     }
 
     private void putDecimalIfPresent(ObjectNode node, String fieldName, BigDecimal value) {

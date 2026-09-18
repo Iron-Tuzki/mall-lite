@@ -30,6 +30,8 @@ public class ProductSearchController {
                                                 @RequestParam(required = false) String brandName,
                                                 @RequestParam(required = false) BigDecimal minPrice,
                                                 @RequestParam(required = false) BigDecimal maxPrice,
+                                                @RequestParam(required = false) String sortBy,
+                                                @RequestParam(required = false) String sortOrder,
                                                 @RequestParam(required = false) Integer pageNo,
                                                 @RequestParam(required = false) Integer pageSize) {
         ProductSearchRequest request = new ProductSearchRequest();
@@ -38,6 +40,8 @@ public class ProductSearchController {
         request.setBrandName(brandName);
         request.setMinPrice(minPrice);
         request.setMaxPrice(maxPrice);
+        request.setSortBy(sortBy);
+        request.setSortOrder(sortOrder);
         request.setPageNo(pageNo);
         request.setPageSize(pageSize);
         return Result.success(productSearchService.search(request));

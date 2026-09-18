@@ -9,7 +9,9 @@ import com.tuzki.mall.product.search.vo.ProductSearchResultVO;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 商品搜索结果映射器，负责把 Elasticsearch 搜索响应解析为前台商品搜索视图对象。
@@ -56,6 +58,7 @@ public class ProductSearchResultMapper {
             item.setSales(readInteger(source, "sales"));
             item.setStock(readInteger(source, "stock"));
             item.setMainImageUrl(readText(source, "mainImageUrl"));
+            item.setHighlights(mapHighlights(hit.path("highlight")));
             records.add(item);
         }
         return records;
@@ -73,6 +76,26 @@ public class ProductSearchResultMapper {
             aggs.add(agg);
         }
         return aggs;
+    }
+
+    private Map<String, List<String>> mapHighlights(JsonNode highlight) {
+        Map<String, List<String>> highlights = new LinkedHashMap<>();
+        if (!highlight.isObject()) {
+            return highlights;
+        }
+        highlight.properties().forEach(entry -> highlights.put(entry.getKey(), mapHighlightFragments(entry.getValue())));
+        return highlights;
+    }
+
+    private List<String> mapHighlightFragments(JsonNode fragments) {
+        List<String> values = new ArrayList<>();
+        if (!fragments.isArray()) {
+            return values;
+        }
+        for (JsonNode fragment : fragments) {
+            values.add(fragment.asText());
+        }
+        return values;
     }
 
     private String readText(JsonNode source, String... fieldNames) {

@@ -17,6 +17,10 @@ public class ProductSearchRequest {
 
     private BigDecimal maxPrice;
 
+    private String sortBy;
+
+    private String sortOrder;
+
     private Integer pageNo;
 
     private Integer pageSize;
@@ -59,6 +63,22 @@ public class ProductSearchRequest {
 
     public void setMaxPrice(BigDecimal maxPrice) {
         this.maxPrice = maxPrice;
+    }
+
+    public String getSortBy() {
+        return sortBy;
+    }
+
+    public void setSortBy(String sortBy) {
+        this.sortBy = sortBy;
+    }
+
+    public String getSortOrder() {
+        return sortOrder;
+    }
+
+    public void setSortOrder(String sortOrder) {
+        this.sortOrder = sortOrder;
     }
 
     public Integer getPageNo() {

@@ -6,5 +6,6 @@ package com.tuzki.mall.admin.product.search;
  * @param productId 商品 ID
  * @param eventType 商品搜索索引变更事件类型
  */
-public record ProductSearchIndexChangedEvent(Long productId, ProductSearchIndexChangedEventType eventType) {
+public record ProductSearchIndexChangedEvent(Long productId,
+                                             ProductSearchIndexChangedEventType eventType) {
 }

@@ -59,6 +59,8 @@ class ProductSearchControllerTest {
                         .param("brandName", "KeyMaster")
                         .param("minPrice", "100")
                         .param("maxPrice", "800")
+                        .param("sortBy", "sales")
+                        .param("sortOrder", "desc")
                         .param("pageNo", "1")
                         .param("pageSize", "10"))
                 .andExpect(status().isOk())
@@ -75,6 +77,8 @@ class ProductSearchControllerTest {
         assertEquals("KeyMaster", request.getBrandName());
         assertEquals(new BigDecimal("100"), request.getMinPrice());
         assertEquals(new BigDecimal("800"), request.getMaxPrice());
+        assertEquals("sales", request.getSortBy());
+        assertEquals("desc", request.getSortOrder());
         assertEquals(1, request.getPageNo());
         assertEquals(10, request.getPageSize());
     }

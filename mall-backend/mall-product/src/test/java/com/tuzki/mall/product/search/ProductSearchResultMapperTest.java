@@ -22,6 +22,14 @@ class ProductSearchResultMapperTest {
                     },
                     "hits": [
                       {
+                        "highlight": {
+                          "productName": [
+                            "<em>三模</em>机械键盘"
+                          ],
+                          "description": [
+                            "支持蓝牙、有线和 2.4G 的<em>机械键盘</em>"
+                          ]
+                        },
                         "_source": {
                           "productId": 4001,
                           "productName": "三模机械键盘",
@@ -73,6 +81,10 @@ class ProductSearchResultMapperTest {
         assertEquals(1, result.getRecords().size());
         assertEquals(4001L, result.getRecords().get(0).getProductId());
         assertEquals("三模机械键盘", result.getRecords().get(0).getProductName());
+        assertEquals("<em>三模</em>机械键盘",
+                result.getRecords().get(0).getHighlights().get("productName").get(0));
+        assertEquals("支持蓝牙、有线和 2.4G 的<em>机械键盘</em>",
+                result.getRecords().get(0).getHighlights().get("description").get(0));
         assertEquals(new BigDecimal("299.0"), result.getRecords().get(0).getPrice());
         assertEquals("KeyMaster", result.getBrandAggs().get(0).getKey());
         assertEquals(2L, result.getBrandAggs().get(0).getCount());

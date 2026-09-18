@@ -1,7 +1,7 @@
 # Spring Boot 商品搜索接口练习
 # 使用前提：
 # 1. 本地 Elasticsearch 已启动：http://localhost:9200
-# 2. 先执行 docs/http/elasticsearch-aggregations-basic.http 中第 2-4 步，创建并写入 mall_product_agg_v1
+# 2. 先通过后台商品管理接口创建商品，或执行商品搜索索引重建接口，把商品数据同步到 mall_product_search_v1
 # 3. 启动 mall-app 后再执行本文件请求
 
 @appHost = http://localhost:8080
@@ -38,4 +38,34 @@ Accept: application/json
 ### 5. 不传关键词，只查询上架商品并返回聚合
 # @name searchWithoutKeyword
 GET {{appHost}}/api/products/search?pageNo=1&pageSize=5
+Accept: application/json
+
+###
+
+### 6. 按销量倒序搜索
+# sortBy 支持 relevance、sales、price；sortOrder 支持 asc、desc。
+# @name searchSortBySalesDesc
+GET {{appHost}}/api/products/search?keyword=键盘&sortBy=sales&sortOrder=desc&pageNo=1&pageSize=10
+Accept: application/json
+
+###
+
+### 7. 按价格升序搜索
+# @name searchSortByPriceAsc
+GET {{appHost}}/api/products/search?keyword=键盘&sortBy=price&sortOrder=asc&pageNo=1&pageSize=10
+Accept: application/json
+
+###
+
+### 8. 组合筛选 + 排序
+# @name searchWithFiltersAndSort
+GET {{appHost}}/api/products/search?keyword=键盘&categoryId=20&brandName=KeyMaster&minPrice=100&maxPrice=800&sortBy=price&sortOrder=desc&pageNo=1&pageSize=10
+Accept: application/json
+
+###
+
+### 9. 观察高亮结果
+# 命中 keyword 时，响应 records[*].highlights 中会返回 productName、brandName、description 的高亮片段。
+# @name searchWithHighlight
+GET {{appHost}}/api/products/search?keyword=无线&pageNo=1&pageSize=10
 Accept: application/json

@@ -23,6 +23,8 @@ class ProductSearchQueryBuilderTest {
         request.setMaxPrice(new BigDecimal("800.00"));
         request.setPageNo(2);
         request.setPageSize(5);
+        request.setSortBy("price");
+        request.setSortOrder("desc");
 
         JsonNode root = objectMapper.readTree(new ProductSearchQueryBuilder(objectMapper).buildSearchBody(request));
 
@@ -47,9 +49,13 @@ class ProductSearchQueryBuilderTest {
         assertEquals("brandName", root.path("aggs").path("by_brand").path("terms").path("field").asText());
         assertEquals("categoryName", root.path("aggs").path("by_category").path("terms").path("field").asText());
         assertEquals("price", root.path("aggs").path("price_ranges").path("range").path("field").asText());
-        assertEquals("desc", root.path("sort").get(0).path("_score").asText());
-        assertEquals("desc", root.path("sort").get(1).path("sales").asText());
-        assertEquals("asc", root.path("sort").get(2).path("price").asText());
+        assertEquals("desc", root.path("sort").get(0).path("price").path("order").asText());
+        assertEquals("desc", root.path("sort").get(1).path("_score").asText());
+        assertEquals("<em>", root.path("highlight").path("pre_tags").get(0).asText());
+        assertEquals("</em>", root.path("highlight").path("post_tags").get(0).asText());
+        assertEquals(150, root.path("highlight").path("fields").path("productName").path("fragment_size").asInt());
+        assertEquals(150, root.path("highlight").path("fields").path("brandName").path("fragment_size").asInt());
+        assertEquals(150, root.path("highlight").path("fields").path("description").path("fragment_size").asInt());
     }
 
     @Test
@@ -66,5 +72,19 @@ class ProductSearchQueryBuilderTest {
         assertEquals(0, root.path("query").path("bool").path("must").size());
         assertEquals("ON_SALE", root.path("query").path("bool").path("filter").get(0)
                 .path("term").path("status").asText());
+    }
+
+    @Test
+    void buildSearchBodyFallsBackToRelevanceSortWhenSortParametersAreUnsupported() throws Exception {
+        ProductSearchRequest request = new ProductSearchRequest();
+        request.setSortBy("unknown");
+        request.setSortOrder("sideways");
+
+        JsonNode root = objectMapper.readTree(new ProductSearchQueryBuilder(objectMapper).buildSearchBody(request));
+
+        assertEquals("desc", root.path("sort").get(0).path("_score").asText());
+        assertEquals("desc", root.path("sort").get(1).path("sales").path("order").asText());
+        assertEquals("asc", root.path("sort").get(2).path("price").path("order").asText());
+        assertEquals(true, root.path("highlight").isMissingNode());
     }
 }

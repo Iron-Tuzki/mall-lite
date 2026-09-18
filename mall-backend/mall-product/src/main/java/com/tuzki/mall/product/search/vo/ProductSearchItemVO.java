@@ -1,6 +1,9 @@
 package com.tuzki.mall.product.search.vo;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 商品搜索结果项视图对象，用于返回 Elasticsearch 命中的单个商品摘要信息。
@@ -24,6 +27,8 @@ public class ProductSearchItemVO {
     private Integer stock;
 
     private String mainImageUrl;
+
+    private Map<String, List<String>> highlights = new LinkedHashMap<>();
 
     public Long getProductId() {
         return productId;
@@ -95,5 +100,13 @@ public class ProductSearchItemVO {
 
     public void setMainImageUrl(String mainImageUrl) {
         this.mainImageUrl = mainImageUrl;
+    }
+
+    public Map<String, List<String>> getHighlights() {
+        return highlights;
+    }
+
+    public void setHighlights(Map<String, List<String>> highlights) {
+        this.highlights = highlights;
     }
 }
